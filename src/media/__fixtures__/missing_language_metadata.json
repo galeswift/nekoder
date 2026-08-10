@@ -1,0 +1,8 @@
+{
+  "format": { "duration": "1400.000000" },
+  "streams": [
+    { "index": 0, "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080, "disposition": { "default": 1, "forced": 0 }, "tags": {} },
+    { "index": 1, "codec_type": "audio", "codec_name": "aac", "channels": 2, "channel_layout": "stereo", "disposition": { "default": 1, "forced": 0 }, "tags": {} },
+    { "index": 2, "codec_type": "subtitle", "codec_name": "subrip", "disposition": { "default": 0, "forced": 0 }, "tags": {} }
+  ]
+}

@@ -1,0 +1,23 @@
+node_modules/
+dist/
+dist-electron/
+release/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# media
+*.mkv
+*.mp4
+*.avi
+
+# local ffmpeg binaries if copied into workspace
+/ffmpeg/
+/ffprobe/
+
+# machine-specific settings
+.env
+.env.local
