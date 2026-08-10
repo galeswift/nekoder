@@ -14,7 +14,7 @@ describe("selectBurnTrackIndexesOnModeChange", () => {
   });
 
   it("drops copy-selected tracks that aren't burnable, keeping the rest", () => {
-    const tracks = [track(2, "hdmv_pgs_subtitle"), track(3, "ass"), track(4, "ass")];
+    const tracks = [track(2, "dvb_teletext"), track(3, "ass"), track(4, "ass")];
     const result = selectBurnTrackIndexesOnModeChange({ mode: "copy", trackIndexes: [2, 4] }, tracks);
     expect(result).toEqual([4]);
   });
@@ -25,20 +25,20 @@ describe("selectBurnTrackIndexesOnModeChange", () => {
     expect(result).toEqual([3]);
   });
 
-  it("selects every burnable track in the file when nothing is currently selected", () => {
+  it("selects every burnable track in the file when nothing is currently selected, including bitmap tracks", () => {
     const tracks = [track(2, "ass"), track(3, "ass"), track(4, "hdmv_pgs_subtitle")];
     const result = selectBurnTrackIndexesOnModeChange({ mode: "none", trackIndexes: [] }, tracks);
-    expect(result).toEqual([2, 3]);
+    expect(result).toEqual([2, 3, 4]);
   });
 
   it("returns an empty list when the current selection has no burnable track", () => {
-    const tracks = [track(2, "hdmv_pgs_subtitle"), track(3, "ass")];
+    const tracks = [track(2, "dvb_teletext"), track(3, "ass")];
     const result = selectBurnTrackIndexesOnModeChange({ mode: "copy", trackIndexes: [2] }, tracks);
     expect(result).toEqual([]);
   });
 
   it("returns an empty list when nothing is selected and no track in the file is burnable", () => {
-    const tracks = [track(2, "hdmv_pgs_subtitle"), track(3, "dvd_subtitle")];
+    const tracks = [track(2, "dvb_teletext"), track(3, "dvb_teletext")];
     const result = selectBurnTrackIndexesOnModeChange({ mode: "none", trackIndexes: [] }, tracks);
     expect(result).toEqual([]);
   });

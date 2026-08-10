@@ -155,15 +155,47 @@ describe("buildFfmpegArgs", () => {
     expect(args[vfIndex + 1]).toContain("si=1");
   });
 
-  it("rejects burning in an image-based (PGS) subtitle track", () => {
+  it("burns in a bitmap (PGS) subtitle track via overlay instead of the subtitles filter", () => {
+    const args = buildFfmpegArgs(
+      baseRequest({
+        subtitle: { mode: "burn", trackIndexes: [2] },
+        subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+      }),
+    );
+
+    expect(args).not.toContain("-vf");
+    const fcIndex = args.indexOf("-filter_complex");
+    expect(fcIndex).toBeGreaterThan(-1);
+    expect(args[fcIndex + 1]).toBe("[0:v][0:s:0]overlay[vout]");
+    expect(args).toContain("[vout]");
+  });
+
+  it("mixes text and bitmap burn tracks in one filter_complex graph", () => {
+    const args = buildFfmpegArgs(
+      baseRequest({
+        subtitle: { mode: "burn", trackIndexes: [2, 3] },
+        subtitleTracks: [
+          { index: 2, codec: "subrip" },
+          { index: 3, codec: "hdmv_pgs_subtitle" },
+        ],
+      }),
+    );
+
+    const fcIndex = args.indexOf("-filter_complex");
+    expect(args[fcIndex + 1]).toBe(
+      `[0:v]subtitles='C\\:/rips/Cowboy Bebop/Episode 01.mkv':si=0[v0];[v0][0:s:1]overlay[vout]`,
+    );
+  });
+
+  it("rejects burning in an unsupported subtitle codec", () => {
     expect(() =>
       buildFfmpegArgs(
         baseRequest({
           subtitle: { mode: "burn", trackIndexes: [2] },
-          subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+          subtitleTracks: [{ index: 2, codec: "dvb_teletext" }],
         }),
       ),
-    ).toThrow(/image-based/);
+    ).toThrow(/unsupported subtitle codec/);
   });
 
   it("rejects burning in a track that isn't among the input's subtitle streams", () => {
@@ -207,9 +239,13 @@ describe("isBurnableSubtitleCodec", () => {
     expect(isBurnableSubtitleCodec("ASS")).toBe(true);
   });
 
-  it("rejects image-based codecs", () => {
-    expect(isBurnableSubtitleCodec("hdmv_pgs_subtitle")).toBe(false);
-    expect(isBurnableSubtitleCodec("dvd_subtitle")).toBe(false);
-    expect(isBurnableSubtitleCodec("dvb_subtitle")).toBe(false);
+  it("accepts bitmap codecs", () => {
+    expect(isBurnableSubtitleCodec("hdmv_pgs_subtitle")).toBe(true);
+    expect(isBurnableSubtitleCodec("dvd_subtitle")).toBe(true);
+    expect(isBurnableSubtitleCodec("dvb_subtitle")).toBe(true);
+  });
+
+  it("rejects unsupported codecs", () => {
+    expect(isBurnableSubtitleCodec("dvb_teletext")).toBe(false);
   });
 });

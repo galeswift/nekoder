@@ -12,15 +12,22 @@ export interface SubtitleSelection {
 }
 
 /** Subtitle codecs the ffmpeg `subtitles` filter can render (text-based, via libass). */
-const BURNABLE_SUBTITLE_CODECS = new Set(["subrip", "srt", "ass", "ssa", "mov_text", "webvtt", "text", "subviewer"]);
+const TEXT_SUBTITLE_CODECS = new Set(["subrip", "srt", "ass", "ssa", "mov_text", "webvtt", "text", "subviewer"]);
 
-/**
- * Whether a subtitle track's codec can be burned in via the ffmpeg `subtitles`
- * filter. Bitmap codecs (PGS, VOBSUB/DVD, DVB) are rasterized images, not
- * text, and that filter cannot render them.
- */
+/** Bitmap subtitle codecs, burned in via `overlay` instead of the `subtitles` filter. */
+const BITMAP_SUBTITLE_CODECS = new Set(["hdmv_pgs_subtitle", "pgssub", "dvd_subtitle", "dvdsub", "dvb_subtitle", "dvbsub"]);
+
+function isTextSubtitleCodec(codec: string): boolean {
+  return TEXT_SUBTITLE_CODECS.has(codec.toLowerCase());
+}
+
+function isBitmapSubtitleCodec(codec: string): boolean {
+  return BITMAP_SUBTITLE_CODECS.has(codec.toLowerCase());
+}
+
+/** Whether a subtitle track's codec can be burned in, via either `subtitles` (text) or `overlay` (bitmap). */
 export function isBurnableSubtitleCodec(codec: string): boolean {
-  return BURNABLE_SUBTITLE_CODECS.has(codec.toLowerCase());
+  return isTextSubtitleCodec(codec) || isBitmapSubtitleCodec(codec);
 }
 
 export interface SubtitleTrackInfo {
@@ -63,7 +70,7 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
       }
       if (!isBurnableSubtitleCodec(burnTrack.codec)) {
         throw new Error(
-          `Cannot burn in "${burnTrack.codec}" subtitles: this is an image-based format that ffmpeg's text renderer can't draw. Copy this track into the output instead, or choose a text-based subtitle track to burn in.`,
+          `Cannot burn in "${burnTrack.codec}" subtitles: unsupported subtitle codec. Copy this track into the output instead.`,
         );
       }
     }
@@ -102,15 +109,53 @@ function videoArgs(request: EncodeRequest): string[] {
   const args = ["-c:v", encoder, "-crf", String(video.crf), "-preset", video.preset];
 
   if (request.subtitle.mode === "burn") {
-    const path = escapeForSubtitlesFilter(request.inputPath);
-    const filters = request.subtitle.trackIndexes.map((index) => {
-      const ordinal = request.subtitleTracks!.findIndex((t) => t.index === index);
-      return `subtitles='${path}':si=${ordinal}`;
+    const hasBitmapTrack = request.subtitle.trackIndexes.some((index) => {
+      const track = request.subtitleTracks!.find((t) => t.index === index)!;
+      return isBitmapSubtitleCodec(track.codec);
     });
-    args.push("-vf", filters.join(","));
+
+    if (hasBitmapTrack) {
+      args.push("-filter_complex", buildBurnFilterComplex(request), "-map", "[vout]");
+    } else {
+      const path = escapeForSubtitlesFilter(request.inputPath);
+      const filters = request.subtitle.trackIndexes.map((index) => {
+        const ordinal = request.subtitleTracks!.findIndex((t) => t.index === index);
+        return `subtitles='${path}':si=${ordinal}`;
+      });
+      args.push("-vf", filters.join(","));
+    }
   }
 
   return args;
+}
+
+/**
+ * Builds a `-filter_complex` graph that burns in every selected subtitle
+ * track in order, mixing text (via `subtitles`) and bitmap (via `overlay`)
+ * tracks as needed. Used instead of `-vf` whenever at least one burn track
+ * is bitmap-based, since `overlay` needs a second input pad that `-vf` can't
+ * express.
+ */
+function buildBurnFilterComplex(request: EncodeRequest): string {
+  const path = escapeForSubtitlesFilter(request.inputPath);
+  const indexes = request.subtitle.trackIndexes;
+  const steps: string[] = [];
+  let current = "[0:v]";
+
+  indexes.forEach((index, i) => {
+    const ordinal = request.subtitleTracks!.findIndex((t) => t.index === index);
+    const track = request.subtitleTracks!.find((t) => t.index === index)!;
+    const outLabel = i === indexes.length - 1 ? "[vout]" : `[v${i}]`;
+
+    if (isBitmapSubtitleCodec(track.codec)) {
+      steps.push(`${current}[0:s:${ordinal}]overlay${outLabel}`);
+    } else {
+      steps.push(`${current}subtitles='${path}':si=${ordinal}${outLabel}`);
+    }
+    current = outLabel;
+  });
+
+  return steps.join(";");
 }
 
 function audioArgs(request: EncodeRequest): string[] {

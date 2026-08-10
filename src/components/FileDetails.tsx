@@ -47,7 +47,7 @@ export function FileDetails({
 }: FileDetailsProps) {
   const media = item.media;
   const hasBurnableTrack = media?.subtitleTracks.some((t) => isBurnableSubtitleCodec(t.codec)) ?? false;
-  const burnUnavailableReason = "No text-based subtitle track available to burn in (only image-based tracks found).";
+  const burnUnavailableReason = "No subtitle track available to burn in.";
   const filenameFieldValue = item.plexFilenameOverride ?? plexInfo.suggestedFilename;
 
   return (
