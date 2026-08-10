@@ -59,8 +59,24 @@ export async function startEncodeQueue(
   }
 }
 
+/**
+ * Ffmpeg writes to this sibling path instead of the final destination, so a
+ * failed or cancelled encode never leaves a partial file at `outputPath` that
+ * would make the next start mistake it for a real conflict.
+ */
+function partialOutputPath(outputPath: string): string {
+  const ext = path.extname(outputPath);
+  const base = path.basename(outputPath, ext);
+  return path.join(path.dirname(outputPath), `${base}.partial${ext}`);
+}
+
+async function removeIfExists(filePath: string): Promise<void> {
+  await fs.rm(filePath, { force: true });
+}
+
 async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEncodeItem): Promise<void> {
   const preset = PRESETS[item.presetId];
+  const tempOutputPath = partialOutputPath(item.outputPath);
 
   let args: string[];
   try {
@@ -70,7 +86,7 @@ async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEnco
       "-nostats",
       ...buildFfmpegArgs({
         inputPath: item.inputPath,
-        outputPath: item.outputPath,
+        outputPath: tempOutputPath,
         preset,
         videoTrackIndex: item.videoTrackIndex,
         audioTrackIndex: item.audioTrackIndex,
@@ -87,6 +103,9 @@ async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEnco
 
   try {
     await fs.mkdir(path.dirname(item.outputPath), { recursive: true });
+    // A leftover partial from a previous failed/cancelled attempt would make
+    // ffmpeg's `-n` reject the new run outright.
+    await removeIfExists(tempOutputPath);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     emitLog(window, "error", `Failed to create output directory: ${message}`);
@@ -138,10 +157,19 @@ async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEnco
   }
 
   if (wasCancelled) {
+    await removeIfExists(tempOutputPath);
     window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "cancelled" });
   } else if (exitCode === 0) {
-    window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "complete" });
+    try {
+      await fs.rename(tempOutputPath, item.outputPath);
+      window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "complete" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      emitLog(window, "error", `Failed to finalize output file: ${message}`);
+      window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "error", error: message });
+    }
   } else {
+    await removeIfExists(tempOutputPath);
     window.webContents.send(IPC_CHANNELS.encodeStatus, {
       id: item.id,
       status: "error",

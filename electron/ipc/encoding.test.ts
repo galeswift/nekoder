@@ -5,8 +5,14 @@ import type { BrowserWindow } from "electron";
 import { IPC_CHANNELS, type QueueEncodeItem } from "../../src/ipc/api";
 
 const mkdirMock = vi.fn().mockResolvedValue(undefined);
+const rmMock = vi.fn().mockResolvedValue(undefined);
+const renameMock = vi.fn().mockResolvedValue(undefined);
 vi.mock("node:fs/promises", () => ({
-  default: { mkdir: (...args: unknown[]) => mkdirMock(...args) },
+  default: {
+    mkdir: (...args: unknown[]) => mkdirMock(...args),
+    rm: (...args: unknown[]) => rmMock(...args),
+    rename: (...args: unknown[]) => renameMock(...args),
+  },
 }));
 
 const spawnMock = vi.fn();
@@ -47,6 +53,10 @@ describe("startEncodeQueue", () => {
   beforeEach(() => {
     mkdirMock.mockClear();
     mkdirMock.mockResolvedValue(undefined);
+    rmMock.mockClear();
+    rmMock.mockResolvedValue(undefined);
+    renameMock.mockClear();
+    renameMock.mockResolvedValue(undefined);
     spawnMock.mockReset();
   });
 
@@ -125,6 +135,60 @@ describe("startEncodeQueue", () => {
     await queue;
 
     expect(spawnMock).toHaveBeenCalledTimes(1); // second item never spawned
+  });
+
+  it("encodes to a sibling .partial file and renames it to the real output on success", async () => {
+    const child = fakeChild();
+    const item = baseItem();
+    const partialPath = path.join(path.dirname(item.outputPath), "Episode.partial.mkv");
+    spawnMock.mockImplementation((_ffmpeg, args: string[]) => {
+      // The output path is the last ffmpeg argument.
+      expect(args.at(-1)).toBe(partialPath);
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    });
+
+    await startEncodeQueue(fakeWindow(), "ffmpeg", [item]);
+
+    expect(renameMock).toHaveBeenCalledWith(partialPath, item.outputPath);
+  });
+
+  it("removes the partial file instead of renaming it when ffmpeg fails", async () => {
+    const child = fakeChild();
+    spawnMock.mockImplementation(() => {
+      queueMicrotask(() => child.emit("close", 1));
+      return child;
+    });
+
+    const window = fakeWindow();
+    const item = baseItem();
+    const partialPath = path.join(path.dirname(item.outputPath), "Episode.partial.mkv");
+    await startEncodeQueue(window, "ffmpeg", [item]);
+
+    expect(renameMock).not.toHaveBeenCalled();
+    expect(rmMock).toHaveBeenCalledWith(partialPath, { force: true });
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      IPC_CHANNELS.encodeStatus,
+      expect.objectContaining({ id: "1", status: "error" }),
+    );
+  });
+
+  it("removes the partial file instead of renaming it when the encode is cancelled", async () => {
+    const child = fakeChild();
+    spawnMock.mockImplementationOnce(() => child);
+
+    const window = fakeWindow();
+    const item = baseItem();
+    const partialPath = path.join(path.dirname(item.outputPath), "Episode.partial.mkv");
+    const queue = startEncodeQueue(window, "ffmpeg", [item]);
+
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+    cancelCurrentEncode("1");
+    child.emit("close", null);
+    await queue;
+
+    expect(renameMock).not.toHaveBeenCalled();
+    expect(rmMock).toHaveBeenCalledWith(partialPath, { force: true });
   });
 
   it("does nothing when no queue is active", () => {

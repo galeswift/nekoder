@@ -166,8 +166,15 @@ describe("buildFfmpegArgs", () => {
     expect(args).not.toContain("-vf");
     const fcIndex = args.indexOf("-filter_complex");
     expect(fcIndex).toBeGreaterThan(-1);
-    expect(args[fcIndex + 1]).toBe("[0:v][0:s:0]overlay[vout]");
-    expect(args).toContain("[vout]");
+    expect(args[fcIndex + 1]).toBe("[0:0][0:s:0]overlay[vout]");
+
+    // Only the filtered stream should be mapped for video — mapping the raw
+    // input track too would produce two video streams in the output.
+    const mapIndexes = args.reduce<string[]>((acc, value, i) => {
+      if (args[i - 1] === "-map") acc.push(value);
+      return acc;
+    }, []);
+    expect(mapIndexes).toEqual(["[vout]", "0:1"]);
   });
 
   it("mixes text and bitmap burn tracks in one filter_complex graph", () => {
@@ -183,8 +190,21 @@ describe("buildFfmpegArgs", () => {
 
     const fcIndex = args.indexOf("-filter_complex");
     expect(args[fcIndex + 1]).toBe(
-      `[0:v]subtitles='C\\:/rips/Cowboy Bebop/Episode 01.mkv':si=0[v0];[v0][0:s:1]overlay[vout]`,
+      `[0:0]subtitles='C\\:/rips/Cowboy Bebop/Episode 01.mkv':si=0[v0];[v0][0:s:1]overlay[vout]`,
     );
+  });
+
+  it("maps the selected video track into the filter graph, not a hardcoded track 0", () => {
+    const args = buildFfmpegArgs(
+      baseRequest({
+        videoTrackIndex: 4,
+        subtitle: { mode: "burn", trackIndexes: [2] },
+        subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+      }),
+    );
+
+    const fcIndex = args.indexOf("-filter_complex");
+    expect(args[fcIndex + 1]).toBe("[0:4][0:s:0]overlay[vout]");
   });
 
   it("rejects burning in an unsupported subtitle codec", () => {

@@ -78,7 +78,11 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
 
   const args: string[] = ["-hide_banner", "-n", "-i", request.inputPath];
 
-  args.push("-map", `0:${request.videoTrackIndex}`);
+  if (hasBitmapBurnTrack(request)) {
+    args.push("-map", "[vout]");
+  } else {
+    args.push("-map", `0:${request.videoTrackIndex}`);
+  }
   if (request.audioTrackIndex !== undefined) {
     args.push("-map", `0:${request.audioTrackIndex}`);
   }
@@ -98,6 +102,15 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
   return args;
 }
 
+/** Whether burning in the selected subtitle tracks requires the `overlay`-based filter_complex graph. */
+function hasBitmapBurnTrack(request: EncodeRequest): boolean {
+  if (request.subtitle.mode !== "burn") return false;
+  return request.subtitle.trackIndexes.some((index) => {
+    const track = request.subtitleTracks!.find((t) => t.index === index)!;
+    return isBitmapSubtitleCodec(track.codec);
+  });
+}
+
 function videoArgs(request: EncodeRequest): string[] {
   const { video } = request.preset;
 
@@ -109,13 +122,8 @@ function videoArgs(request: EncodeRequest): string[] {
   const args = ["-c:v", encoder, "-crf", String(video.crf), "-preset", video.preset];
 
   if (request.subtitle.mode === "burn") {
-    const hasBitmapTrack = request.subtitle.trackIndexes.some((index) => {
-      const track = request.subtitleTracks!.find((t) => t.index === index)!;
-      return isBitmapSubtitleCodec(track.codec);
-    });
-
-    if (hasBitmapTrack) {
-      args.push("-filter_complex", buildBurnFilterComplex(request), "-map", "[vout]");
+    if (hasBitmapBurnTrack(request)) {
+      args.push("-filter_complex", buildBurnFilterComplex(request));
     } else {
       const path = escapeForSubtitlesFilter(request.inputPath);
       const filters = request.subtitle.trackIndexes.map((index) => {
@@ -140,7 +148,7 @@ function buildBurnFilterComplex(request: EncodeRequest): string {
   const path = escapeForSubtitlesFilter(request.inputPath);
   const indexes = request.subtitle.trackIndexes;
   const steps: string[] = [];
-  let current = "[0:v]";
+  let current = `[0:${request.videoTrackIndex}]`;
 
   indexes.forEach((index, i) => {
     const ordinal = request.subtitleTracks!.findIndex((t) => t.index === index);
