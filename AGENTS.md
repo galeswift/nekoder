@@ -113,6 +113,6 @@ Prefer the smallest fix that addresses the actual problem.
 
 ## Repository Constraints
 
-Follow the architecture, requirements, and engineering constraints documented in `README.md` and other repository documentation.
+Follow the architecture, requirements, and engineering constraints documented in `PROJECT_BRIEF.md` and other repository documentation.
 
 When reviewing, specifically call out violations of those constraints.

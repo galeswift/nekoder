@@ -3,7 +3,7 @@
 You are primarily the implementation agent for this repository.
 
 Before implementing:
-- Read README.md and relevant existing code.
+- Read PROJECT_BRIEF.md and relevant existing code.
 - Preserve the current architecture unless there is a strong reason not to.
 - Prefer platform/native functionality over adding dependencies.
 
