@@ -4,6 +4,8 @@ import type { SubtitleMode } from "../media/ffmpegCommand";
 import type { AppSettings } from "../settings/types";
 import type { DiscoveredFile, FfmpegToolsStatus, LogEvent, QueueEncodeItem } from "../ipc/api";
 import { createQueueItem, deriveTrackSelection, type QueueItem, type QueueItemStatus } from "./queueItem";
+import { findDuplicateOutputPaths } from "./conflictDetection";
+import { isBurnableSubtitleCodec } from "../media/ffmpegCommand";
 
 function isInProgressOrDone(item: QueueItem): boolean {
   return item.status === "encoding" || item.status === "complete";
@@ -188,7 +190,10 @@ export function useAppController() {
           return { ...it, subtitle: { mode: "copy", trackIndexes }, subtitleReason: "Manually selected." };
         }
         const burnTrackIndex =
-          it.subtitle.mode === "burn" ? it.subtitle.burnTrackIndex : it.media?.subtitleTracks[0]?.index;
+          it.subtitle.mode === "burn"
+            ? it.subtitle.burnTrackIndex
+            : (it.media?.subtitleTracks.find((t) => isBurnableSubtitleCodec(t.codec)) ?? it.media?.subtitleTracks[0])
+                ?.index;
         return {
           ...it,
           subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex },
@@ -216,21 +221,46 @@ export function useAppController() {
   }
 
   async function onStartQueue(): Promise<void> {
-    const readyItems = itemsRef.current.filter(
+    const currentSettings = settingsRef.current;
+    const candidates = itemsRef.current.filter(
       (it) => it.status === "ready" && it.outputPath !== undefined && it.videoTrackIndex !== undefined,
     );
-    if (readyItems.length === 0) return;
+    if (candidates.length === 0 || !currentSettings) return;
 
-    const queueItems: QueueEncodeItem[] = readyItems.map((it) => ({
-      id: it.id,
-      inputPath: it.inputPath,
-      outputPath: it.outputPath!,
-      presetId: it.presetId,
-      videoTrackIndex: it.videoTrackIndex!,
-      audioTrackIndex: it.audioTrackIndex,
-      subtitle: it.subtitle,
-      durationSeconds: it.media?.durationSeconds,
-    }));
+    // Re-check destinations immediately before encoding: a file may have
+    // appeared on disk, or the queue may now contain two items resolving to
+    // the same path, since these were last probed.
+    const revalidated = await Promise.all(
+      candidates.map(async (item) => ({ item, outcome: await resolveOutputPath(item, currentSettings) })),
+    );
+
+    const duplicateIds = findDuplicateOutputPaths(
+      revalidated
+        .filter(({ outcome }) => outcome.status === "ready")
+        .map(({ item, outcome }) => ({ id: item.id, outputPath: outcome.outputPath! })),
+    );
+
+    const queueItems: QueueEncodeItem[] = [];
+    for (const { item, outcome } of revalidated) {
+      if (outcome.status === "conflict" || duplicateIds.has(item.id)) {
+        updateItem(item.id, { status: "conflict", outputPath: outcome.outputPath });
+        continue;
+      }
+      updateItem(item.id, { status: "ready", outputPath: outcome.outputPath });
+      queueItems.push({
+        id: item.id,
+        inputPath: item.inputPath,
+        outputPath: outcome.outputPath!,
+        presetId: item.presetId,
+        videoTrackIndex: item.videoTrackIndex!,
+        audioTrackIndex: item.audioTrackIndex,
+        subtitle: item.subtitle,
+        subtitleTracks: item.media?.subtitleTracks.map((t) => ({ index: t.index, codec: t.codec })) ?? [],
+        durationSeconds: item.media?.durationSeconds,
+      });
+    }
+
+    if (queueItems.length === 0) return;
 
     await window.desktop.startEncode(queueItems);
   }

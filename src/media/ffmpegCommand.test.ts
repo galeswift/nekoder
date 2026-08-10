@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFfmpegArgs, type EncodeRequest } from "./ffmpegCommand";
+import { buildFfmpegArgs, isBurnableSubtitleCodec, type EncodeRequest } from "./ffmpegCommand";
 import { PRESETS } from "./presets";
 
 function baseRequest(overrides: Partial<EncodeRequest> = {}): EncodeRequest {
@@ -10,6 +10,7 @@ function baseRequest(overrides: Partial<EncodeRequest> = {}): EncodeRequest {
     videoTrackIndex: 0,
     audioTrackIndex: 1,
     subtitle: { mode: "copy", trackIndexes: [2] },
+    subtitleTracks: [{ index: 2, codec: "subrip" }],
     ...overrides,
   };
 }
@@ -114,8 +115,49 @@ describe("buildFfmpegArgs", () => {
 
     const vfIndex = args.indexOf("-vf");
     expect(vfIndex).toBeGreaterThan(-1);
-    expect(args[vfIndex + 1]).toContain("si=2");
+    // Only subtitle stream in subtitleTracks, so its subtitle-relative ordinal is 0
+    // even though its global ffprobe stream index (burnTrackIndex) is 2.
+    expect(args[vfIndex + 1]).toContain("si=0");
     expect(args).not.toContain("-c:s");
+  });
+
+  it("uses the subtitle-relative ordinal (si), not the global ffprobe stream index", () => {
+    // Layout: 0=video, 1=audio, 2=subtitle(eng), 3=subtitle(burn target, jpn).
+    // The burn target is the 2nd subtitle stream, so si must be 1, not 3.
+    const args = buildFfmpegArgs(
+      baseRequest({
+        subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex: 3 },
+        subtitleTracks: [
+          { index: 2, codec: "subrip" },
+          { index: 3, codec: "ass" },
+        ],
+      }),
+    );
+
+    const vfIndex = args.indexOf("-vf");
+    expect(args[vfIndex + 1]).toContain("si=1");
+  });
+
+  it("rejects burning in an image-based (PGS) subtitle track", () => {
+    expect(() =>
+      buildFfmpegArgs(
+        baseRequest({
+          subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex: 2 },
+          subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+        }),
+      ),
+    ).toThrow(/image-based/);
+  });
+
+  it("rejects burning in a track that isn't among the input's subtitle streams", () => {
+    expect(() =>
+      buildFfmpegArgs(
+        baseRequest({
+          subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex: 99 },
+          subtitleTracks: [{ index: 2, codec: "subrip" }],
+        }),
+      ),
+    ).toThrow(/not found/);
   });
 
   it("throws when burning subtitles with a remux (copy) preset", () => {
@@ -138,5 +180,19 @@ describe("buildFfmpegArgs", () => {
   it("uses -n to avoid silently overwriting or hanging on prompts", () => {
     const args = buildFfmpegArgs(baseRequest());
     expect(args).toContain("-n");
+  });
+});
+
+describe("isBurnableSubtitleCodec", () => {
+  it("accepts text-based codecs", () => {
+    expect(isBurnableSubtitleCodec("subrip")).toBe(true);
+    expect(isBurnableSubtitleCodec("ass")).toBe(true);
+    expect(isBurnableSubtitleCodec("ASS")).toBe(true);
+  });
+
+  it("rejects image-based codecs", () => {
+    expect(isBurnableSubtitleCodec("hdmv_pgs_subtitle")).toBe(false);
+    expect(isBurnableSubtitleCodec("dvd_subtitle")).toBe(false);
+    expect(isBurnableSubtitleCodec("dvb_subtitle")).toBe(false);
   });
 });

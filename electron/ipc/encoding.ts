@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { BrowserWindow } from "electron";
 import { buildFfmpegArgs } from "../../src/media/ffmpegCommand";
 import { PRESETS } from "../../src/media/presets";
@@ -44,11 +46,21 @@ async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEnco
         videoTrackIndex: item.videoTrackIndex,
         audioTrackIndex: item.audioTrackIndex,
         subtitle: item.subtitle,
+        subtitleTracks: item.subtitleTracks,
       }),
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     emitLog(window, "error", message);
+    window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "error", error: message });
+    return;
+  }
+
+  try {
+    await fs.mkdir(path.dirname(item.outputPath), { recursive: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    emitLog(window, "error", `Failed to create output directory: ${message}`);
     window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "error", error: message });
     return;
   }

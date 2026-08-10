@@ -1,6 +1,6 @@
 import type { MediaFile } from "../media/types";
 import type { PresetId } from "../media/presets";
-import type { SubtitleSelection } from "../media/ffmpegCommand";
+import type { SubtitleSelection, SubtitleTrackInfo } from "../media/ffmpegCommand";
 import type { AppSettings } from "../settings/types";
 import type { ToolLocation } from "../media/toolLocator";
 
@@ -33,6 +33,8 @@ export interface QueueEncodeItem {
   videoTrackIndex: number;
   audioTrackIndex: number | undefined;
   subtitle: SubtitleSelection;
+  /** All subtitle streams present in the input, in ffprobe stream order. */
+  subtitleTracks: SubtitleTrackInfo[];
   durationSeconds: number | undefined;
 }
 

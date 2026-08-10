@@ -8,6 +8,7 @@ import { browseForExecutable, checkFfmpegTools, probeMediaFile } from "./ipc/med
 import { loadSettings, saveSettings } from "./ipc/settings";
 import { cancelCurrentEncode, startEncodeQueue } from "./ipc/encoding";
 import { parseSettings } from "../src/settings/types";
+import { locateTool } from "../src/media/toolLocator";
 
 const isDev = !app.isPackaged;
 
@@ -61,8 +62,11 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.probeMedia, async (_event, filePath: string) => {
     const settings = await loadSettings();
-    const ffprobePath = settings.ffprobePath ?? "ffprobe";
-    return probeMediaFile(nodeProcessRunner, ffprobePath, filePath);
+    const ffprobe = await locateTool(nodeProcessRunner, [settings.ffprobePath, "ffprobe"]);
+    if (!ffprobe) {
+      return { ok: false, error: "ffprobe was not found. Check the tool paths in Settings." };
+    }
+    return probeMediaFile(nodeProcessRunner, ffprobe.path, filePath);
   });
 
   ipcMain.handle(IPC_CHANNELS.checkFfmpegTools, async () => {
@@ -78,8 +82,18 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.startEncode, async (event, items: QueueEncodeItem[]) => {
     const window = BrowserWindow.fromWebContents(event.sender) ?? mainWindow!;
     const settings = await loadSettings();
-    const ffmpegPath = settings.ffmpegPath ?? "ffmpeg";
-    await startEncodeQueue(window, ffmpegPath, items);
+    const ffmpeg = await locateTool(nodeProcessRunner, [settings.ffmpegPath, "ffmpeg"]);
+    if (!ffmpeg) {
+      for (const item of items) {
+        window.webContents.send(IPC_CHANNELS.encodeStatus, {
+          id: item.id,
+          status: "error",
+          error: "ffmpeg was not found. Check the tool paths in Settings.",
+        });
+      }
+      return;
+    }
+    await startEncodeQueue(window, ffmpeg.path, items);
   });
 
   ipcMain.handle(IPC_CHANNELS.cancelEncode, (_event, id: string) => {

@@ -10,6 +10,23 @@ export interface SubtitleSelection {
   burnTrackIndex?: number;
 }
 
+/** Subtitle codecs the ffmpeg `subtitles` filter can render (text-based, via libass). */
+const BURNABLE_SUBTITLE_CODECS = new Set(["subrip", "srt", "ass", "ssa", "mov_text", "webvtt", "text", "subviewer"]);
+
+/**
+ * Whether a subtitle track's codec can be burned in via the ffmpeg `subtitles`
+ * filter. Bitmap codecs (PGS, VOBSUB/DVD, DVB) are rasterized images, not
+ * text, and that filter cannot render them.
+ */
+export function isBurnableSubtitleCodec(codec: string): boolean {
+  return BURNABLE_SUBTITLE_CODECS.has(codec.toLowerCase());
+}
+
+export interface SubtitleTrackInfo {
+  index: number;
+  codec: string;
+}
+
 export interface EncodeRequest {
   inputPath: string;
   outputPath: string;
@@ -17,6 +34,8 @@ export interface EncodeRequest {
   videoTrackIndex: number;
   audioTrackIndex: number | undefined;
   subtitle: SubtitleSelection;
+  /** All subtitle streams present in the input, in ffprobe stream order. Required for "burn" mode. */
+  subtitleTracks?: SubtitleTrackInfo[];
 }
 
 /**
@@ -34,6 +53,17 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
   }
   if (request.subtitle.mode === "burn" && request.subtitle.burnTrackIndex === undefined) {
     throw new Error("Burn-in subtitle mode requires a burnTrackIndex.");
+  }
+  if (request.subtitle.mode === "burn") {
+    const burnTrack = request.subtitleTracks?.find((t) => t.index === request.subtitle.burnTrackIndex);
+    if (!burnTrack) {
+      throw new Error("Burn-in subtitle track was not found among the input's subtitle streams.");
+    }
+    if (!isBurnableSubtitleCodec(burnTrack.codec)) {
+      throw new Error(
+        `Cannot burn in "${burnTrack.codec}" subtitles: this is an image-based format that ffmpeg's text renderer can't draw. Copy this track into the output instead, or choose a text-based subtitle track to burn in.`,
+      );
+    }
   }
 
   const args: string[] = ["-hide_banner", "-n", "-i", request.inputPath];
@@ -69,7 +99,8 @@ function videoArgs(request: EncodeRequest): string[] {
   const args = ["-c:v", encoder, "-crf", String(video.crf), "-preset", video.preset];
 
   if (request.subtitle.mode === "burn") {
-    args.push("-vf", `subtitles='${escapeForSubtitlesFilter(request.inputPath)}':si=${request.subtitle.burnTrackIndex}`);
+    const ordinal = request.subtitleTracks!.findIndex((t) => t.index === request.subtitle.burnTrackIndex);
+    args.push("-vf", `subtitles='${escapeForSubtitlesFilter(request.inputPath)}':si=${ordinal}`);
   }
 
   return args;

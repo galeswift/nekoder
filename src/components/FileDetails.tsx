@@ -1,7 +1,7 @@
 import type { QueueItem } from "../state/queueItem";
 import type { PresetId } from "../media/presets";
 import { PRESETS } from "../media/presets";
-import type { SubtitleMode } from "../media/ffmpegCommand";
+import { isBurnableSubtitleCodec, type SubtitleMode } from "../media/ffmpegCommand";
 import { formatDuration } from "../format";
 
 interface FileDetailsProps {
@@ -134,7 +134,8 @@ export function FileDetails({
                     : item.subtitle.mode === "burn"
                       ? item.subtitle.burnTrackIndex === track.index
                       : false;
-                const disabled = item.subtitle.mode === "none";
+                const unburnable = item.subtitle.mode === "burn" && !isBurnableSubtitleCodec(track.codec);
+                const disabled = item.subtitle.mode === "none" || unburnable;
 
                 return (
                   <tr
@@ -146,6 +147,7 @@ export function FileDetails({
                       else onChangeBurnTrack(track.index);
                     }}
                     style={{ cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 }}
+                    title={unburnable ? `"${track.codec}" is image-based and can't be burned in — copy it instead.` : undefined}
                   >
                     <td>
                       {item.subtitle.mode === "burn" ? (
