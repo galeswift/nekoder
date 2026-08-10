@@ -46,10 +46,18 @@ export function QueueList({ items, selectedIds, onSelect }: QueueListProps) {
       <div className="queue-list">
         {items.map((item) => {
           const audioTrack = item.media?.audioTracks.find((t) => t.index === item.audioTrackIndex);
-          const subtitleTrack =
-            item.subtitle.mode === "copy"
-              ? item.media?.subtitleTracks.find((t) => t.index === item.subtitle.trackIndexes[0])
-              : undefined;
+          const subtitleTracks =
+            item.subtitle.mode === "none"
+              ? []
+              : item.subtitle.trackIndexes
+                  .map((index) => item.media?.subtitleTracks.find((t) => t.index === index))
+                  .filter((t): t is NonNullable<typeof t> => t !== undefined);
+          const subtitleLabel =
+            item.subtitle.mode === "none"
+              ? "None"
+              : subtitleTracks.length > 0
+                ? subtitleTracks.map(trackLabel).join(", ")
+                : "—";
           const destinationName = basename(item.outputPath);
 
           return (
@@ -77,7 +85,7 @@ export function QueueList({ items, selectedIds, onSelect }: QueueListProps) {
               </div>
               <div className="queue-item-meta">
                 <span>JA: {trackLabel(audioTrack)}</span>
-                <span>EN subs: {item.subtitle.mode === "none" ? "None" : trackLabel(subtitleTrack)}</span>
+                <span>EN subs: {subtitleLabel}</span>
                 <span>{formatDuration(item.media?.durationSeconds)}</span>
               </div>
               {item.status === "encoding" && (

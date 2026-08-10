@@ -4,10 +4,11 @@ export type SubtitleMode = "copy" | "burn" | "none";
 
 export interface SubtitleSelection {
   mode: SubtitleMode;
-  /** Stream indexes (as reported by ffprobe) to copy. Ignored for "burn" and "none". */
+  /**
+   * Stream indexes (as reported by ffprobe) to copy ("copy" mode) or burn
+   * into the video, in order ("burn" mode). Ignored for "none".
+   */
   trackIndexes: number[];
-  /** Stream index to burn in. Required and used only when mode is "burn". */
-  burnTrackIndex?: number;
 }
 
 /** Subtitle codecs the ffmpeg `subtitles` filter can render (text-based, via libass). */
@@ -51,18 +52,20 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
       "Cannot burn subtitles while copying video (remux preset). Choose an encoding preset instead.",
     );
   }
-  if (request.subtitle.mode === "burn" && request.subtitle.burnTrackIndex === undefined) {
-    throw new Error("Burn-in subtitle mode requires a burnTrackIndex.");
+  if (request.subtitle.mode === "burn" && request.subtitle.trackIndexes.length === 0) {
+    throw new Error("Burn-in subtitle mode requires at least one track to burn in.");
   }
   if (request.subtitle.mode === "burn") {
-    const burnTrack = request.subtitleTracks?.find((t) => t.index === request.subtitle.burnTrackIndex);
-    if (!burnTrack) {
-      throw new Error("Burn-in subtitle track was not found among the input's subtitle streams.");
-    }
-    if (!isBurnableSubtitleCodec(burnTrack.codec)) {
-      throw new Error(
-        `Cannot burn in "${burnTrack.codec}" subtitles: this is an image-based format that ffmpeg's text renderer can't draw. Copy this track into the output instead, or choose a text-based subtitle track to burn in.`,
-      );
+    for (const index of request.subtitle.trackIndexes) {
+      const burnTrack = request.subtitleTracks?.find((t) => t.index === index);
+      if (!burnTrack) {
+        throw new Error(`Burn-in subtitle track ${index} was not found among the input's subtitle streams.`);
+      }
+      if (!isBurnableSubtitleCodec(burnTrack.codec)) {
+        throw new Error(
+          `Cannot burn in "${burnTrack.codec}" subtitles: this is an image-based format that ffmpeg's text renderer can't draw. Copy this track into the output instead, or choose a text-based subtitle track to burn in.`,
+        );
+      }
     }
   }
 
@@ -99,8 +102,12 @@ function videoArgs(request: EncodeRequest): string[] {
   const args = ["-c:v", encoder, "-crf", String(video.crf), "-preset", video.preset];
 
   if (request.subtitle.mode === "burn") {
-    const ordinal = request.subtitleTracks!.findIndex((t) => t.index === request.subtitle.burnTrackIndex);
-    args.push("-vf", `subtitles='${escapeForSubtitlesFilter(request.inputPath)}':si=${ordinal}`);
+    const path = escapeForSubtitlesFilter(request.inputPath);
+    const filters = request.subtitle.trackIndexes.map((index) => {
+      const ordinal = request.subtitleTracks!.findIndex((t) => t.index === index);
+      return `subtitles='${path}':si=${ordinal}`;
+    });
+    args.push("-vf", filters.join(","));
   }
 
   return args;

@@ -2,8 +2,9 @@ import type { MediaFile } from "../media/types";
 import type { PresetId } from "../media/presets";
 import type { SubtitleSelection } from "../media/ffmpegCommand";
 import {
+  selectAudioTrack,
+  selectBurnSubtitleTracks,
   selectSubtitleTracksForCopy,
-  selectTracks,
   type TrackSelectionPreferences,
 } from "../media/trackSelection";
 import type { PlexKind } from "../media/plexNaming";
@@ -63,7 +64,7 @@ export function createQueueItem(file: DiscoveredFile, defaultPresetId: PresetId)
     videoTrackIndex: undefined,
     audioTrackIndex: undefined,
     audioReason: undefined,
-    subtitle: { mode: "copy", trackIndexes: [] },
+    subtitle: { mode: "burn", trackIndexes: [] },
     subtitleReason: undefined,
     outputPath: undefined,
     progress: undefined,
@@ -82,25 +83,38 @@ export interface DerivedTrackSelection {
 
 /**
  * Turns a normalized MediaFile into the automatic track selections shown in
- * the UI: first video track, best-scoring audio/subtitle tracks per the
- * anime heuristics, and a subtitle mode of "copy" if a subtitle track was
- * selected or "none" if there wasn't one worth using.
+ * the UI: first video track, an audio track, and a subtitle mode of "burn"
+ * covering every burnable track in the preferred language (falling back to
+ * "copy" if none are burnable, or "none" if there are no subtitle tracks).
  */
 export function deriveTrackSelection(
   media: MediaFile,
   preferences: TrackSelectionPreferences,
 ): DerivedTrackSelection {
-  const selection = selectTracks(media, preferences);
-  const subtitleGroup = selectSubtitleTracksForCopy(media.subtitleTracks, preferences.subtitleLanguage);
+  const audio = selectAudioTrack(media.audioTracks, preferences.audioLanguage);
+  const burnGroup = selectBurnSubtitleTracks(media.subtitleTracks, preferences.subtitleLanguage);
 
-  return {
+  const base = {
     videoTrackIndex: media.videoTracks[0]?.index,
-    audioTrackIndex: selection.audio.track?.index,
-    audioReason: selection.audio.reason,
-    subtitleReason: subtitleGroup.reason,
+    audioTrackIndex: audio.track?.index,
+    audioReason: audio.reason,
+  };
+
+  if (burnGroup.tracks.length > 0) {
+    return {
+      ...base,
+      subtitleReason: burnGroup.reason,
+      subtitle: { mode: "burn", trackIndexes: burnGroup.tracks.map((t) => t.index) },
+    };
+  }
+
+  const copyGroup = selectSubtitleTracksForCopy(media.subtitleTracks, preferences.subtitleLanguage);
+  return {
+    ...base,
+    subtitleReason: copyGroup.reason,
     subtitle:
-      subtitleGroup.tracks.length > 0
-        ? { mode: "copy", trackIndexes: subtitleGroup.tracks.map((t) => t.index) }
+      copyGroup.tracks.length > 0
+        ? { mode: "copy", trackIndexes: copyGroup.tracks.map((t) => t.index) }
         : { mode: "none", trackIndexes: [] },
   };
 }

@@ -19,11 +19,23 @@ wired end-to-end:
 - Add individual files or a folder (recursive `.mkv` discovery, arbitrary
   nesting depth).
 - ffprobe probing + normalization into app-owned `MediaFile` types.
-- Anime-specific track selection heuristics (Japanese audio, English
-  full-dialogue subtitles, commentary/signs-songs/forced avoidance) with a
-  human-readable reason shown in the UI.
-- Manual override of audio track, subtitle track(s), subtitle mode
-  (copy/burn/none), and preset per file.
+- Simplified (non-scoring) track selection: audio picks the preferred
+  language's default-flagged track, skipping commentary; subtitles default
+  to **burn mode**, burning in every non-commentary subtitle track in the
+  preferred language (so split dialogue/signs-songs tracks both get burned
+  in without needing keyword-based signs/songs detection), falling back to
+  copy mode (same "every matching track" rule) if none are burnable, or
+  "none" if there are no subtitle tracks at all (`src/media/trackSelection.ts`).
+  A human-readable reason is shown in the UI.
+- `SubtitleSelection.trackIndexes` is used for both copy and burn mode (burn
+  can hold multiple tracks now — chained as multiple `subtitles=...` filters
+  in the ffmpeg `-vf` arg, in `src/media/ffmpegCommand.ts`). The old
+  single-track `burnTrackIndex` field and scoring-based heuristics
+  (forced/signs-songs/SDH keyword weighting) were deleted per user request
+  ("don't be so clever").
+- Manual override of audio track, subtitle track(s) (checkboxes, both modes
+  support multi-select now), subtitle mode (copy/burn/none), and preset per
+  file.
 - Three presets: Plex Compatible H.264, Plex HEVC, Remux/Copy.
 - ffmpeg argument generation as a `string[]` (never a shell string), spawned
   directly — no shell invocation anywhere.

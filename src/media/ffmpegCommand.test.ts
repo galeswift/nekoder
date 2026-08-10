@@ -110,15 +110,32 @@ describe("buildFfmpegArgs", () => {
 
   it("builds a burn-in subtitle filter when an encoding preset is used", () => {
     const args = buildFfmpegArgs(
-      baseRequest({ subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex: 2 } }),
+      baseRequest({ subtitle: { mode: "burn", trackIndexes: [2] } }),
     );
 
     const vfIndex = args.indexOf("-vf");
     expect(vfIndex).toBeGreaterThan(-1);
     // Only subtitle stream in subtitleTracks, so its subtitle-relative ordinal is 0
-    // even though its global ffprobe stream index (burnTrackIndex) is 2.
+    // even though its global ffprobe stream index (trackIndexes) is 2.
     expect(args[vfIndex + 1]).toContain("si=0");
     expect(args).not.toContain("-c:s");
+  });
+
+  it("chains multiple subtitles filters when burning in several tracks", () => {
+    const args = buildFfmpegArgs(
+      baseRequest({
+        subtitle: { mode: "burn", trackIndexes: [2, 3] },
+        subtitleTracks: [
+          { index: 2, codec: "subrip" },
+          { index: 3, codec: "ass" },
+        ],
+      }),
+    );
+
+    const vfIndex = args.indexOf("-vf");
+    expect(args[vfIndex + 1]).toBe(
+      `subtitles='C\\:/rips/Cowboy Bebop/Episode 01.mkv':si=0,subtitles='C\\:/rips/Cowboy Bebop/Episode 01.mkv':si=1`,
+    );
   });
 
   it("uses the subtitle-relative ordinal (si), not the global ffprobe stream index", () => {
@@ -126,7 +143,7 @@ describe("buildFfmpegArgs", () => {
     // The burn target is the 2nd subtitle stream, so si must be 1, not 3.
     const args = buildFfmpegArgs(
       baseRequest({
-        subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex: 3 },
+        subtitle: { mode: "burn", trackIndexes: [3] },
         subtitleTracks: [
           { index: 2, codec: "subrip" },
           { index: 3, codec: "ass" },
@@ -142,7 +159,7 @@ describe("buildFfmpegArgs", () => {
     expect(() =>
       buildFfmpegArgs(
         baseRequest({
-          subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex: 2 },
+          subtitle: { mode: "burn", trackIndexes: [2] },
           subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
         }),
       ),
@@ -153,7 +170,7 @@ describe("buildFfmpegArgs", () => {
     expect(() =>
       buildFfmpegArgs(
         baseRequest({
-          subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex: 99 },
+          subtitle: { mode: "burn", trackIndexes: [99] },
           subtitleTracks: [{ index: 2, codec: "subrip" }],
         }),
       ),
@@ -165,7 +182,7 @@ describe("buildFfmpegArgs", () => {
       buildFfmpegArgs(
         baseRequest({
           preset: PRESETS.remux,
-          subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex: 2 },
+          subtitle: { mode: "burn", trackIndexes: [2] },
         }),
       ),
     ).toThrow(/Cannot burn subtitles/);

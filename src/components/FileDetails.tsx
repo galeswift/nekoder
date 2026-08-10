@@ -21,7 +21,6 @@ interface FileDetailsProps {
   onChangeAudioTrack: (index: number) => void;
   onChangeSubtitleMode: (mode: SubtitleMode) => void;
   onToggleSubtitleTrack: (index: number) => void;
-  onChangeBurnTrack: (index: number) => void;
   onChangePlexEnabled: (enabled: boolean) => void;
   onChangeShowName: (showName: string) => void;
   onChangeSeason: (season: number) => void;
@@ -37,7 +36,6 @@ export function FileDetails({
   onChangeAudioTrack,
   onChangeSubtitleMode,
   onToggleSubtitleTrack,
-  onChangeBurnTrack,
   onChangePlexEnabled,
   onChangeShowName,
   onChangeSeason,
@@ -213,10 +211,10 @@ export function FileDetails({
         <div className="section-title">Subtitle tracks</div>
         <div className="field-row" style={{ marginBottom: 8 }}>
           <select value={item.subtitle.mode} onChange={(e) => onChangeSubtitleMode(e.target.value as SubtitleMode)}>
-            <option value="copy">Copy into output</option>
             <option value="burn" disabled={!hasBurnableTrack} title={!hasBurnableTrack ? burnUnavailableReason : undefined}>
               Burn into video
             </option>
+            <option value="copy">Copy into output</option>
             <option value="none">No subtitles</option>
           </select>
         </div>
@@ -237,12 +235,7 @@ export function FileDetails({
             </thead>
             <tbody>
               {media.subtitleTracks.map((track) => {
-                const isSelected =
-                  item.subtitle.mode === "copy"
-                    ? item.subtitle.trackIndexes.includes(track.index)
-                    : item.subtitle.mode === "burn"
-                      ? item.subtitle.burnTrackIndex === track.index
-                      : false;
+                const isSelected = item.subtitle.mode !== "none" && item.subtitle.trackIndexes.includes(track.index);
                 const unburnable = item.subtitle.mode === "burn" && !isBurnableSubtitleCodec(track.codec);
                 const disabled = item.subtitle.mode === "none" || unburnable;
 
@@ -252,18 +245,13 @@ export function FileDetails({
                     className={isSelected ? "track-selected" : undefined}
                     onClick={() => {
                       if (disabled) return;
-                      if (item.subtitle.mode === "copy") onToggleSubtitleTrack(track.index);
-                      else onChangeBurnTrack(track.index);
+                      onToggleSubtitleTrack(track.index);
                     }}
                     style={{ cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 }}
                     title={unburnable ? `"${track.codec}" is image-based and can't be burned in — copy it instead.` : undefined}
                   >
                     <td>
-                      {item.subtitle.mode === "burn" ? (
-                        <input type="radio" checked={isSelected} readOnly disabled={disabled} />
-                      ) : (
-                        <input type="checkbox" checked={isSelected} readOnly disabled={disabled} />
-                      )}
+                      <input type="checkbox" checked={isSelected} readOnly disabled={disabled} />
                     </td>
                     <td>{track.index}</td>
                     <td>{track.language ?? "—"}</td>

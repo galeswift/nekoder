@@ -42,7 +42,6 @@ export function App() {
             onChangeAudioTrack={(index) => controller.onChangeAudioTrack(selectedItem.id, index)}
             onChangeSubtitleMode={(mode) => controller.onChangeSubtitleMode(selectedItem.id, mode)}
             onToggleSubtitleTrack={(index) => controller.onToggleSubtitleTrack(selectedItem.id, index)}
-            onChangeBurnTrack={(index) => controller.onChangeBurnTrack(selectedItem.id, index)}
             onChangePlexEnabled={(enabled) => controller.onChangePlexEnabled(selectedItem.id, enabled)}
             onChangeShowName={(showName) => controller.onChangeShowName(selectedItem.id, showName)}
             onChangeSeason={(season) => controller.onChangeSeason(selectedItem.id, season)}

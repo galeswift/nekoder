@@ -5,7 +5,7 @@ import type { AppSettings } from "../settings/types";
 import type { DiscoveredFile, FfmpegToolsStatus, LogEvent, QueueEncodeItem } from "../ipc/api";
 import { createQueueItem, deriveTrackSelection, type QueueItem, type QueueItemStatus } from "./queueItem";
 import { findDuplicateOutputPaths } from "./conflictDetection";
-import { selectBurnTrackIndexOnModeChange } from "./burnTrackSelection";
+import { selectBurnTrackIndexesOnModeChange } from "./burnTrackSelection";
 import { assignSequenceNumbers, classifyByDuration, normalizePositiveInteger, type PlexKind } from "../media/plexNaming";
 import {
   computeItemPlexFilename,
@@ -288,16 +288,12 @@ export function useAppController() {
         if (mode === "none") {
           return { ...it, subtitle: { mode: "none", trackIndexes: [] }, subtitleReason: "Manually disabled." };
         }
-        if (mode === "copy") {
-          const trackIndexes = it.subtitle.mode === "copy" ? it.subtitle.trackIndexes : [];
-          return { ...it, subtitle: { mode: "copy", trackIndexes }, subtitleReason: "Manually selected." };
+        if (mode === "burn") {
+          const trackIndexes = selectBurnTrackIndexesOnModeChange(it.subtitle, it.media?.subtitleTracks ?? []);
+          return { ...it, subtitle: { mode: "burn", trackIndexes }, subtitleReason: "Manually selected." };
         }
-        const burnTrackIndex = selectBurnTrackIndexOnModeChange(it.subtitle, it.media?.subtitleTracks ?? []);
-        return {
-          ...it,
-          subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex },
-          subtitleReason: "Manually selected.",
-        };
+        const trackIndexes = it.subtitle.mode === "none" ? [] : it.subtitle.trackIndexes;
+        return { ...it, subtitle: { mode: "copy", trackIndexes }, subtitleReason: "Manually selected." };
       }),
     );
   }
@@ -305,18 +301,14 @@ export function useAppController() {
   function onToggleSubtitleTrack(itemId: string, index: number): void {
     setItems((prev) =>
       prev.map((it) => {
-        if (it.id !== itemId || it.subtitle.mode !== "copy") return it;
+        if (it.id !== itemId || (it.subtitle.mode !== "copy" && it.subtitle.mode !== "burn")) return it;
         const has = it.subtitle.trackIndexes.includes(index);
         const trackIndexes = has
           ? it.subtitle.trackIndexes.filter((i) => i !== index)
           : [...it.subtitle.trackIndexes, index];
-        return { ...it, subtitle: { mode: "copy", trackIndexes }, subtitleReason: "Manually selected." };
+        return { ...it, subtitle: { mode: it.subtitle.mode, trackIndexes }, subtitleReason: "Manually selected." };
       }),
     );
-  }
-
-  function onChangeBurnTrack(itemId: string, index: number): void {
-    updateItem(itemId, { subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex: index } });
   }
 
   /** Returns this item's Plex naming group (per-folder settings), a display label, and the current computed suggestion. */
@@ -513,7 +505,6 @@ export function useAppController() {
     onChangeAudioTrack,
     onChangeSubtitleMode,
     onToggleSubtitleTrack,
-    onChangeBurnTrack,
     onChangePlexEnabled,
     onChangeShowName,
     onChangeSeason,

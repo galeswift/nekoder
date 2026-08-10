@@ -3,34 +3,19 @@ import { isBurnableSubtitleCodec } from "../media/ffmpegCommand";
 import type { SubtitleTrack } from "../media/types";
 
 /**
- * Picks the subtitle track to burn in when the user switches subtitle mode
- * to "burn". Scans every track the user currently has selected (all
- * copy-selected tracks, in file order, or the current burn track) for a
- * burnable one — anime files commonly list signs/songs before full-dialogue
- * subtitles, so checking only the first selection could skip past a selected
- * dialogue track in favor of an unrelated one. Falls back to the first
- * burnable track in the file only when nothing is currently selected.
- * Returns undefined when no candidate is burnable, rather than picking an
- * unburnable track that would be guaranteed to fail at encode time — callers
- * should disable the Burn option when the file has no burnable track at all.
+ * Picks which subtitle tracks to burn in when the user switches subtitle
+ * mode to "burn": whichever of the currently-selected tracks are burnable,
+ * or every burnable track in the file if nothing was selected yet.
  */
-export function selectBurnTrackIndexOnModeChange(
+export function selectBurnTrackIndexesOnModeChange(
   currentSubtitle: SubtitleSelection,
   subtitleTracks: SubtitleTrack[],
-): number | undefined {
-  const selectedIndexes = new Set(
-    currentSubtitle.mode === "burn"
-      ? currentSubtitle.burnTrackIndex !== undefined
-        ? [currentSubtitle.burnTrackIndex]
-        : []
-      : currentSubtitle.mode === "copy"
-        ? currentSubtitle.trackIndexes
-        : [],
-  );
-
-  if (selectedIndexes.size > 0) {
-    return subtitleTracks.find((t) => selectedIndexes.has(t.index) && isBurnableSubtitleCodec(t.codec))?.index;
+): number[] {
+  if (currentSubtitle.mode === "none") {
+    return subtitleTracks.filter((t) => isBurnableSubtitleCodec(t.codec)).map((t) => t.index);
   }
 
-  return subtitleTracks.find((t) => isBurnableSubtitleCodec(t.codec))?.index;
+  return subtitleTracks
+    .filter((t) => currentSubtitle.trackIndexes.includes(t.index) && isBurnableSubtitleCodec(t.codec))
+    .map((t) => t.index);
 }

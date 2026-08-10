@@ -21,22 +21,22 @@ describe("createQueueItem", () => {
 });
 
 describe("deriveTrackSelection", () => {
-  it("selects Japanese audio and full English subtitles with reasons", () => {
+  it("defaults to burning in every English subtitle track", () => {
     const media = normalizeMediaFile("ep01.mkv", japaneseAudioEnglishFullSubs as RawFfprobeOutput);
     const result = deriveTrackSelection(media, { audioLanguage: "jpn", subtitleLanguage: "eng" });
 
     expect(result.videoTrackIndex).toBe(0);
     expect(result.audioTrackIndex).toBe(1);
-    expect(result.subtitle).toEqual({ mode: "copy", trackIndexes: [2, 3] });
-    expect(result.audioReason).toContain("jpn");
-    expect(result.subtitleReason).toContain("Selected stream 2");
+    expect(result.subtitle).toEqual({ mode: "burn", trackIndexes: [2, 3] });
+    expect(result.audioReason).toContain("Selected stream");
+    expect(result.subtitleReason).toContain("Burning in");
   });
 
-  it("copies both the dialogue track and a separate signs/songs track", () => {
+  it("burns in both the dialogue track and a separate signs/songs track", () => {
     const media = normalizeMediaFile("ep01.mkv", signsAndSongsPlusDialogue as RawFfprobeOutput);
     const result = deriveTrackSelection(media, { audioLanguage: "jpn", subtitleLanguage: "eng" });
 
-    expect(result.subtitle).toEqual({ mode: "copy", trackIndexes: [3, 2] });
+    expect(result.subtitle).toEqual({ mode: "burn", trackIndexes: [2, 3] });
   });
 
   it("falls back to subtitle mode 'none' when there are no subtitle tracks", () => {
