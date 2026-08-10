@@ -170,6 +170,91 @@ input {
   flex-wrap: wrap;
 }
 
+.queue-item-tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.queue-item-paths {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+}
+
+.queue-item-arrow {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.queue-item-dst {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.queue-selection-banner {
+  padding: 6px 10px;
+  background: var(--accent-dim);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.kind-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.kind-episode {
+  background: #38414a;
+  color: #a9c6ff;
+}
+
+.kind-movie {
+  background: #4a3a6a;
+  color: #d2b8ff;
+}
+
+.kind-extra {
+  background: #4a3f2a;
+  color: #f0c987;
+}
+
+.bulk-file-list {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.bulk-file-list li {
+  padding: 2px 0;
+}
+
+.kind-btn {
+  opacity: 0.7;
+}
+
+.kind-btn.active {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+}
+
 .detail-panel {
   flex: 1;
   overflow-y: auto;

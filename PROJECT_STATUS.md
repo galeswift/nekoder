@@ -35,13 +35,70 @@ wired end-to-end:
 - Cancel current encode (kills the active ffmpeg child process).
 - Expandable log panel (ffmpeg/ffprobe invocations, stderr, errors).
 - Settings persisted as JSON under `app.getPath("userData")`.
+- Plex-friendly output naming: files are grouped by their immediate source
+  folder; each group gets an editable Show Name (auto-guessed from the
+  folder name), Season, and Starting Episode. Each file's Episode/Movie/Extra
+  kind defaults from duration (`src/media/plexNaming.ts`:
+  `classifyByDuration`, movie >= 60min, extra <= 5min) and is manually
+  overridable, as is the final output filename (a plain editable text field
+  in the "Plex naming" section of File Details, pre-filled with the computed
+  suggestion). Episode/extra numbers are assigned sequentially per group via
+  `assignSequenceNumbers`, skipping movies. Output path becomes
+  `<outputRoot>/<ShowName>/<ShowName> - sSSeEE.mkv` (or `.../Extras/<ShowName>
+  - extra-NN.mkv`, or `.../<ShowName>.mkv` for movies), computed in
+  `computeOutputPath`'s new `plexPath` branch (`src/media/outputPaths.ts`),
+  which takes over from the existing preserve-source-structure mirroring when
+  present and sanitizes every segment server-side regardless of what the
+  renderer sent. Verified end-to-end against the real `d:\Video` tree (see
+  `git log` for the commit) via a scratch script driving the real
+  discover/probe/naming pipeline — not just unit tests — confirming the
+  K-ON movie/extras and Robotech Extras file are correctly classified. Not
+  yet exercised by clicking through the actual Electron UI.
+- Post-implementation code review (Codex) on the Plex naming feature found
+  and fixed: episode numbering silently shifting when completed/encoding
+  items or failed probes were excluded from the numbering set (fixed by
+  extracting `src/state/plexRecompute.ts` — numbering now always considers
+  every successfully probed item regardless of status, while only
+  non-in-progress items get their output path/status actually rewritten);
+  a race where rapid edits (e.g. typing in the Show Name field) could let an
+  older recompute's IPC round-trip overwrite a newer one, and where
+  `onStartQueue` could silently drop an item stuck with a stale "conflict"
+  status instead of giving it a chance to revalidate (fixed via a
+  generation-counter guard in `recomputeAllOutputPaths` and broadening
+  `onStartQueue`'s candidate selection to revalidate rather than trust
+  stored status); and unvalidated season/start-episode numeric input
+  (fixed via `normalizePositiveInteger` in `plexNaming.ts`, applied both at
+  the input boundary and defensively inside filename padding). One review
+  finding was evaluated and intentionally not changed: separate disc-rip
+  folders (e.g. `K-ONComplete18 BD-1`, `BD-2`) default to the same guessed
+  show name and both start at s01e01, which is the direct consequence of
+  the user's explicit choice (this session) for manual per-folder
+  season/start-episode rather than automatic cross-folder coordination;
+  conflict detection already prevents any silent overwrite, and the
+  workflow is to bump each subsequent folder's starting episode by hand.
 
-99 unit tests pass (`npm test`), covering ffprobe normalization, track
+- Queue list now shows, per file, a colored kind tag (Episode/Movie/Extra,
+  `src/components/QueueList.tsx` `KindTag`) alongside the status badge, and a
+  source → destination filename preview line, so grouping/naming can be
+  sanity-checked without clicking into each file.
+- Multi-select in the queue list (Ctrl/Cmd+click to toggle, Shift+click for a
+  range; state lives in `useAppController`'s `selectedIds`/`onSelect`).
+  Selecting more than one file swaps the detail panel for
+  `src/components/BulkEditPanel.tsx`, which can set Kind or Season across all
+  selected files at once (`onBulkChangeKind`/`onBulkChangeSeason` in
+  `useAppController.ts`; season writes to each selected item's owning Plex
+  group, kind writes directly to each item). Not yet clicked through in the
+  running Electron app — only typechecked/built.
+
+153 unit tests pass (`npm test`), covering ffprobe normalization, track
 selection heuristics, ffmpeg argument generation, output path preservation/
 conflict detection (including real filesystem case-sensitivity probing),
 burn-track selection, sequential-queue/concurrency guarding, progress
-parsing, settings parsing, tool discovery, and recursive file discovery.
-Typecheck and build (renderer + main) are clean.
+parsing, settings parsing, tool discovery, recursive file discovery, and
+Plex naming (folder-name cleanup, duration classification, sequence
+numbering, sanitization against path traversal, numeric input clamping, and
+the stable-numbering-across-status-changes orchestration in
+`plexRecompute.test.ts`). Typecheck and build (renderer + main) are clean.
 
 Three independent code-review passes (Codex) since the initial slice found
 and fixed: nested-output-folder creation before encode, burn-in subtitle
@@ -59,10 +116,33 @@ OS-based case-sensitivity guess with an actual probe of the chosen output
 directory (`src/media/caseSensitivity.ts`, via a new
 `files:checkCaseSensitivity` IPC call).
 
+## Running / packaging
+
+- `run.bat` (repo root) launches the dev build.
+  `release\Anime Plex Converter *.exe` exists it starts that directly,
+  otherwise it falls back to `npm install` (first run) + `npm run dev:electron`.
+- `npm run package` builds a standalone Windows portable `.exe` via
+  electron-builder (config lives in the `"build"` key of `package.json`) into
+  `release/`. It always runs `npm run build` first, so the packaged exe can
+  never go stale relative to source.
+- `npm run verify` chains `typecheck` → `test` → `package`, so running it
+  regenerates the packaged exe from current source as part of validating a
+  change. Packaging is not part of the plain `npm test` vitest run (it's slow
+  and downloads electron/nsis assets), only of `verify`/`package`.
+- `release/` is gitignored; the exe is a build artifact, not committed.
+
 ## Known limitations / not yet done
 
-- No packaging (electron-builder) — deferred by explicit user decision on
-  2026-08-09; only `npm run dev` / `build` / typecheck / test exist.
+- Plex naming UI (the new "Plex naming" section in File Details) has not
+  been clicked through in the running Electron app — only unit tests and a
+  scratch script exercising the underlying pure logic against real
+  `d:\Video` files. Next session should launch `npm run dev:electron`, add
+  `d:\Video`, and confirm the fields render/update as expected, including
+  editing a Show Name and watching sibling files' suggestions update.
+- No installer (NSIS/MSI) or auto-update — current target is `portable`
+  (single self-contained .exe), which was sufficient for local use.
+- No app icon set — packaged exe currently uses the default Electron icon.
+- No code signing — Windows SmartScreen may warn on first run of the exe.
 - No automated UI/component tests (React Testing Library) — per the brief,
   core logic testing was prioritized over UI testing for the first slice.
   React-hook logic that needed regression coverage (burn-track selection,
