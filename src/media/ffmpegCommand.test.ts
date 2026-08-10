@@ -164,6 +164,7 @@ describe("buildFfmpegArgs", () => {
     );
 
     expect(args).not.toContain("-vf");
+    expect(args.slice(0, 5)).toEqual(["-hide_banner", "-n", "-fix_sub_duration", "-i", baseRequest().inputPath]);
     const fcIndex = args.indexOf("-filter_complex");
     expect(fcIndex).toBeGreaterThan(-1);
     expect(args[fcIndex + 1]).toBe("[0:0][0:s:0]overlay[vout]");
@@ -175,6 +176,21 @@ describe("buildFfmpegArgs", () => {
       return acc;
     }, []);
     expect(mapIndexes).toEqual(["[vout]", "0:1"]);
+  });
+
+  it("does not enable subtitle-duration repair when bitmap subtitles are not being burned", () => {
+    const textBurnArgs = buildFfmpegArgs(
+      baseRequest({ subtitle: { mode: "burn", trackIndexes: [2] } }),
+    );
+    const copyArgs = buildFfmpegArgs(
+      baseRequest({
+        subtitle: { mode: "copy", trackIndexes: [2] },
+        subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+      }),
+    );
+
+    expect(textBurnArgs).not.toContain("-fix_sub_duration");
+    expect(copyArgs).not.toContain("-fix_sub_duration");
   });
 
   it("mixes text and bitmap burn tracks in one filter_complex graph", () => {

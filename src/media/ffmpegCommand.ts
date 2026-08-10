@@ -76,7 +76,17 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
     }
   }
 
-  const args: string[] = ["-hide_banner", "-n", "-i", request.inputPath];
+  const args: string[] = ["-hide_banner", "-n"];
+
+  // Some bitmap subtitle codecs represent "display until the next subtitle"
+  // with a UINT32_MAX millisecond duration. Once converted to video frames by
+  // filter_complex, that sentinel can make the Matroska output appear to be
+  // 4,294,967 seconds long and destroys seeking. This input option resolves
+  // each subtitle's real duration from the following subtitle packet.
+  if (hasBitmapBurnTrack(request)) {
+    args.push("-fix_sub_duration");
+  }
+  args.push("-i", request.inputPath);
 
   if (hasBitmapBurnTrack(request)) {
     args.push("-map", "[vout]");

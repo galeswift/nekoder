@@ -219,6 +219,7 @@ found and fixed:
    doc described in the brief (prerequisites, commands, architecture) without
    losing the original brief content they intentionally placed there.
 3. Consider electron-builder packaging once the app has seen real use.
+4. Add ability to remove items from the list of pending videos (queue list).
 
 ## Architecture notes for a fresh session
 
