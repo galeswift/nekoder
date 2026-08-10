@@ -1,6 +1,7 @@
 interface ToolbarProps {
   outputFolder: string | undefined;
   isEncoding: boolean;
+  isStarting: boolean;
   canStartQueue: boolean;
   onAddFiles: () => void;
   onAddFolder: () => void;
@@ -13,6 +14,7 @@ interface ToolbarProps {
 export function Toolbar({
   outputFolder,
   isEncoding,
+  isStarting,
   canStartQueue,
   onAddFiles,
   onAddFolder,
@@ -36,7 +38,11 @@ export function Toolbar({
         {outputFolder ? `→ ${outputFolder}` : "No output folder chosen"}
       </span>
       <div className="toolbar-spacer" />
-      <button className="btn btn-primary" onClick={onStartQueue} disabled={!canStartQueue || isEncoding}>
+      <button
+        className="btn btn-primary"
+        onClick={onStartQueue}
+        disabled={!canStartQueue || isEncoding || isStarting}
+      >
         Start Queue
       </button>
       <button className="btn btn-danger" onClick={onCancelCurrent} disabled={!isEncoding}>

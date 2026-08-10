@@ -34,4 +34,26 @@ describe("findDuplicateOutputPaths", () => {
     ]);
     expect(result).toEqual(new Set(["a", "b", "c"]));
   });
+
+  it("treats same-name-different-case paths as distinct when caseSensitive is true", () => {
+    const result = findDuplicateOutputPaths(
+      [
+        { id: "a", outputPath: "/out/Episode.mkv" },
+        { id: "b", outputPath: "/out/episode.mkv" },
+      ],
+      { caseSensitive: true },
+    );
+    expect(result.size).toBe(0);
+  });
+
+  it("still flags exact-case duplicates when caseSensitive is true", () => {
+    const result = findDuplicateOutputPaths(
+      [
+        { id: "a", outputPath: "/out/Episode.mkv" },
+        { id: "b", outputPath: "/out/Episode.mkv" },
+      ],
+      { caseSensitive: true },
+    );
+    expect(result).toEqual(new Set(["a", "b"]));
+  });
 });

@@ -4,8 +4,8 @@ import type { SubtitleMode } from "../media/ffmpegCommand";
 import type { AppSettings } from "../settings/types";
 import type { DiscoveredFile, FfmpegToolsStatus, LogEvent, QueueEncodeItem } from "../ipc/api";
 import { createQueueItem, deriveTrackSelection, type QueueItem, type QueueItemStatus } from "./queueItem";
-import { findDuplicateOutputPaths } from "./conflictDetection";
-import { isBurnableSubtitleCodec } from "../media/ffmpegCommand";
+import { findDuplicateOutputPaths, isLikelyCaseSensitiveFilesystem } from "./conflictDetection";
+import { selectBurnTrackIndexOnModeChange } from "./burnTrackSelection";
 
 function isInProgressOrDone(item: QueueItem): boolean {
   return item.status === "encoding" || item.status === "complete";
@@ -18,9 +18,11 @@ export function useAppController() {
   const [toolsStatus, setToolsStatus] = useState<FfmpegToolsStatus | undefined>(undefined);
   const [showSettings, setShowSettings] = useState(false);
   const [logs, setLogs] = useState<LogEvent[]>([]);
+  const [isStarting, setIsStarting] = useState(false);
 
   const settingsRef = useRef<AppSettings | undefined>(undefined);
   const itemsRef = useRef<QueueItem[]>([]);
+  const startingRef = useRef(false);
   settingsRef.current = settings;
   itemsRef.current = items;
 
@@ -189,11 +191,7 @@ export function useAppController() {
           const trackIndexes = it.subtitle.mode === "copy" ? it.subtitle.trackIndexes : [];
           return { ...it, subtitle: { mode: "copy", trackIndexes }, subtitleReason: "Manually selected." };
         }
-        const burnTrackIndex =
-          it.subtitle.mode === "burn"
-            ? it.subtitle.burnTrackIndex
-            : (it.media?.subtitleTracks.find((t) => isBurnableSubtitleCodec(t.codec)) ?? it.media?.subtitleTracks[0])
-                ?.index;
+        const burnTrackIndex = selectBurnTrackIndexOnModeChange(it.subtitle, it.media?.subtitleTracks ?? []);
         return {
           ...it,
           subtitle: { mode: "burn", trackIndexes: [], burnTrackIndex },
@@ -221,48 +219,61 @@ export function useAppController() {
   }
 
   async function onStartQueue(): Promise<void> {
-    const currentSettings = settingsRef.current;
-    const candidates = itemsRef.current.filter(
-      (it) => it.status === "ready" && it.outputPath !== undefined && it.videoTrackIndex !== undefined,
-    );
-    if (candidates.length === 0 || !currentSettings) return;
+    // Synchronous re-entrancy guard: the checks below are async (IPC round
+    // trips), so a double-click before the "encoding" status event lands
+    // could otherwise slip through twice and start two ffmpeg processes.
+    if (startingRef.current) return;
+    startingRef.current = true;
+    setIsStarting(true);
 
-    // Re-check destinations immediately before encoding: a file may have
-    // appeared on disk, or the queue may now contain two items resolving to
-    // the same path, since these were last probed.
-    const revalidated = await Promise.all(
-      candidates.map(async (item) => ({ item, outcome: await resolveOutputPath(item, currentSettings) })),
-    );
+    try {
+      const currentSettings = settingsRef.current;
+      const candidates = itemsRef.current.filter(
+        (it) => it.status === "ready" && it.outputPath !== undefined && it.videoTrackIndex !== undefined,
+      );
+      if (candidates.length === 0 || !currentSettings) return;
 
-    const duplicateIds = findDuplicateOutputPaths(
-      revalidated
-        .filter(({ outcome }) => outcome.status === "ready")
-        .map(({ item, outcome }) => ({ id: item.id, outputPath: outcome.outputPath! })),
-    );
+      // Re-check destinations immediately before encoding: a file may have
+      // appeared on disk, or the queue may now contain two items resolving to
+      // the same path, since these were last probed.
+      const revalidated = await Promise.all(
+        candidates.map(async (item) => ({ item, outcome: await resolveOutputPath(item, currentSettings) })),
+      );
 
-    const queueItems: QueueEncodeItem[] = [];
-    for (const { item, outcome } of revalidated) {
-      if (outcome.status === "conflict" || duplicateIds.has(item.id)) {
-        updateItem(item.id, { status: "conflict", outputPath: outcome.outputPath });
-        continue;
+      const duplicateIds = findDuplicateOutputPaths(
+        revalidated
+          .filter(({ outcome }) => outcome.status === "ready")
+          .map(({ item, outcome }) => ({ id: item.id, outputPath: outcome.outputPath! })),
+        { caseSensitive: isLikelyCaseSensitiveFilesystem() },
+      );
+
+      const queueItems: QueueEncodeItem[] = [];
+      for (const { item, outcome } of revalidated) {
+        if (outcome.status === "conflict" || duplicateIds.has(item.id)) {
+          updateItem(item.id, { status: "conflict", outputPath: outcome.outputPath });
+          continue;
+        }
+        updateItem(item.id, { status: "ready", outputPath: outcome.outputPath });
+        queueItems.push({
+          id: item.id,
+          inputPath: item.inputPath,
+          outputPath: outcome.outputPath!,
+          presetId: item.presetId,
+          videoTrackIndex: item.videoTrackIndex!,
+          audioTrackIndex: item.audioTrackIndex,
+          subtitle: item.subtitle,
+          subtitleTracks: item.media?.subtitleTracks.map((t) => ({ index: t.index, codec: t.codec })) ?? [],
+          durationSeconds: item.media?.durationSeconds,
+        });
       }
-      updateItem(item.id, { status: "ready", outputPath: outcome.outputPath });
-      queueItems.push({
-        id: item.id,
-        inputPath: item.inputPath,
-        outputPath: outcome.outputPath!,
-        presetId: item.presetId,
-        videoTrackIndex: item.videoTrackIndex!,
-        audioTrackIndex: item.audioTrackIndex,
-        subtitle: item.subtitle,
-        subtitleTracks: item.media?.subtitleTracks.map((t) => ({ index: t.index, codec: t.codec })) ?? [],
-        durationSeconds: item.media?.durationSeconds,
-      });
+
+      if (queueItems.length === 0) return;
+
+      await window.desktop.startEncode(queueItems);
+    } finally {
+      startingRef.current = false;
+      setIsStarting(false);
     }
-
-    if (queueItems.length === 0) return;
-
-    await window.desktop.startEncode(queueItems);
   }
 
   async function onCancelCurrent(): Promise<void> {
@@ -284,6 +295,7 @@ export function useAppController() {
     showSettings,
     logs,
     isEncoding,
+    isStarting,
     canStartQueue,
     setShowSettings,
     onAddFiles,

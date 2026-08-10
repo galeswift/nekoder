@@ -80,4 +80,27 @@ describe("startEncodeQueue", () => {
       expect.objectContaining({ id: "1", status: "error" }),
     );
   });
+
+  it("rejects a second concurrent call instead of running parallel ffmpeg processes", async () => {
+    const firstChild = fakeChild();
+    spawnMock.mockImplementationOnce(() => firstChild);
+
+    const window = fakeWindow();
+    const firstQueue = startEncodeQueue(window, "ffmpeg", [baseItem({ id: "1" })]);
+
+    // Let the first item's mkdir/spawn happen before the second call arrives.
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+
+    const secondQueue = startEncodeQueue(window, "ffmpeg", [baseItem({ id: "2" })]);
+    await secondQueue;
+
+    expect(spawnMock).toHaveBeenCalledTimes(1); // second call never spawned ffmpeg
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      IPC_CHANNELS.encodeStatus,
+      expect.objectContaining({ id: "2", status: "error", error: expect.stringContaining("already running") }),
+    );
+
+    firstChild.emit("close", 0);
+    await firstQueue;
+  });
 });

@@ -14,19 +14,42 @@ interface RunningEncode {
 }
 
 let running: RunningEncode | undefined;
+let queueActive = false;
 
 function emitLog(window: BrowserWindow, level: "info" | "error", message: string): void {
   window.webContents.send(IPC_CHANNELS.log, { timestamp: Date.now(), level, message });
 }
 
-/** Runs queue items sequentially, sending progress/status/log events to the renderer as it goes. */
+/**
+ * Runs queue items sequentially, sending progress/status/log events to the
+ * renderer as it goes. Rejects a second, concurrent call while one queue is
+ * already running — the renderer guards against this too, but the main
+ * process is the last line of defense against launching parallel ffmpeg
+ * processes (which would also corrupt the single `running` cancellation slot).
+ */
 export async function startEncodeQueue(
   window: BrowserWindow,
   ffmpegPath: string,
   items: QueueEncodeItem[],
 ): Promise<void> {
-  for (const item of items) {
-    await runOne(window, ffmpegPath, item);
+  if (queueActive) {
+    for (const item of items) {
+      window.webContents.send(IPC_CHANNELS.encodeStatus, {
+        id: item.id,
+        status: "error",
+        error: "An encode queue is already running.",
+      });
+    }
+    return;
+  }
+
+  queueActive = true;
+  try {
+    for (const item of items) {
+      await runOne(window, ffmpegPath, item);
+    }
+  } finally {
+    queueActive = false;
   }
 }
 

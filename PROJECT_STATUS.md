@@ -36,10 +36,24 @@ wired end-to-end:
 - Expandable log panel (ffmpeg/ffprobe invocations, stderr, errors).
 - Settings persisted as JSON under `app.getPath("userData")`.
 
-74 unit tests pass (`npm test`), covering ffprobe normalization, track
+94 unit tests pass (`npm test`), covering ffprobe normalization, track
 selection heuristics, ffmpeg argument generation, output path preservation/
-conflict detection, progress parsing, settings parsing, tool discovery, and
-recursive file discovery. Typecheck and build (renderer + main) are clean.
+conflict detection (including cross-platform case sensitivity), burn-track
+selection, sequential-queue/concurrency guarding, progress parsing, settings
+parsing, tool discovery, and recursive file discovery. Typecheck and build
+(renderer + main) are clean.
+
+Two independent code-review passes (Codex) since the initial slice found and
+fixed: nested-output-folder creation before encode, burn-in subtitle index
+math (`si=` must be the subtitle-relative ordinal, not the ffprobe global
+stream index), rejection of burn-in for image-based (PGS/DVD/DVB) subtitle
+codecs the `subtitles` filter can't render (with the UI disabling those
+tracks in burn mode), tool-path resolution consistency between the Settings
+status check and actual probe/encode invocation, pre-encode revalidation of
+output destinations plus duplicate-destination detection across the queue,
+a renderer + main-process guard against double-clicking Start Queue into two
+concurrent ffmpeg runs, and preferring the user's already-selected subtitle
+track (over the first burnable one) when switching from Copy to Burn mode.
 
 ## Known limitations / not yet done
 
@@ -47,11 +61,20 @@ recursive file discovery. Typecheck and build (renderer + main) are clean.
   2026-08-09; only `npm run dev` / `build` / typecheck / test exist.
 - No automated UI/component tests (React Testing Library) — per the brief,
   core logic testing was prioritized over UI testing for the first slice.
+  React-hook logic that needed regression coverage (burn-track selection,
+  duplicate-destination detection) was extracted into plain, hook-free
+  modules under `src/state/` so it could still be unit-tested without a DOM.
 - Subtitle burn-in (`-vf subtitles=...`) is implemented in
-  `src/media/ffmpegCommand.ts` and wired into the UI/main process but has not
-  been exercised against a real PGS/ASS file end-to-end.
+  `src/media/ffmpegCommand.ts` and wired into the UI/main process, with
+  image-based (PGS/DVD/DVB) codecs explicitly rejected rather than silently
+  producing a broken filter, but it has not been exercised against a real
+  ASS/PGS file end-to-end.
 - No real-media end-to-end encode has been run yet (no sample MKV available
   in this session) — only the dev-mode window launch was visually verified.
+- Case-sensitive-filesystem detection for duplicate-destination checking
+  (`conflictDetection.ts`) guesses from `navigator.userAgent` since renderer
+  code can't call `node:os` directly; it hasn't been verified on an actual
+  Linux/macOS filesystem, only reasoned about.
 - `AGENTS.md`, `CLAUDE.md`, and `README.md` in the repo root are maintained
   directly by the user (README.md currently holds the original project brief,
   not yet the practical developer README described in the brief's

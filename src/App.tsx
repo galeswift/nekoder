@@ -14,6 +14,7 @@ export function App() {
       <Toolbar
         outputFolder={settings?.lastOutputDirectory}
         isEncoding={controller.isEncoding}
+        isStarting={controller.isStarting}
         canStartQueue={controller.canStartQueue}
         onAddFiles={() => void controller.onAddFiles()}
         onAddFolder={() => void controller.onAddFolder()}
