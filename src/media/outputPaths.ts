@@ -1,7 +1,15 @@
 import path from "node:path";
+import { sanitizePathSegment } from "./plexNaming";
 
 export function isMkvFile(filename: string): boolean {
   return path.extname(filename).toLowerCase() === ".mkv";
+}
+
+export interface PlexPathOptions {
+  /** Show/Extras folder segments, relative to outputRoot (already Plex-shaped, but re-sanitized here as defense in depth). */
+  dirSegments: string[];
+  /** Final filename, including extension. */
+  filename: string;
 }
 
 export interface OutputPathOptions {
@@ -13,17 +21,26 @@ export interface OutputPathOptions {
   outputRoot: string;
   /** Whether to mirror the source's relative directory structure under outputRoot. */
   preserveStructure: boolean;
+  /** When set, overrides preserveStructure/sourceRoot mirroring with a Plex-shaped destination. */
+  plexPath?: PlexPathOptions;
 }
 
 /**
- * Computes the destination path for a source file, mirroring its position
- * relative to sourceRoot under outputRoot when preserveStructure is true.
- * Always outputs a .mkv extension and never overwrites the source filename
- * with anything other than its own name (first-version behavior: no
- * renaming beyond extension normalization).
+ * Computes the destination path for a source file. When plexPath is given,
+ * it takes over entirely (Plex naming defines its own canonical layout,
+ * independent of preserveStructure). Otherwise mirrors the source's
+ * position relative to sourceRoot under outputRoot when preserveStructure
+ * is true. Always outputs a .mkv extension.
  */
 export function computeOutputPath(options: OutputPathOptions): string {
-  const { sourceRoot, filePath, outputRoot, preserveStructure } = options;
+  const { sourceRoot, filePath, outputRoot, preserveStructure, plexPath } = options;
+
+  if (plexPath) {
+    const safeSegments = plexPath.dirSegments.map((segment) => sanitizePathSegment(segment));
+    const safeFilename = sanitizePathSegment(path.parse(plexPath.filename).name) + ".mkv";
+    return path.join(outputRoot, ...safeSegments, safeFilename);
+  }
+
   const parsed = path.parse(filePath);
   const outputFilename = `${parsed.name}.mkv`;
 

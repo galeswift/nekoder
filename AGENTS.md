@@ -9,7 +9,7 @@ Another coding agent may make multiple commits while implementing a feature. Whe
 Unless explicitly told otherwise:
 
 * Determine the current branch.
-* Determine the appropriate base branch, normally `main`.
+* Determine the appropriate base branch, normally `master`.
 * Review all committed changes on the current branch since it diverged from the base branch.
 * Use Git history and diffs as needed to understand the complete implementation.
 * Do not assume that the latest commit contains the entire feature.
@@ -18,7 +18,7 @@ Unless explicitly told otherwise:
 Conceptually, review the equivalent of:
 
 ```bash
-git diff main...HEAD
+git diff master...HEAD
 ```
 
 Use the actual merge base when appropriate.

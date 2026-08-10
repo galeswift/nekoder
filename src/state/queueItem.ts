@@ -1,7 +1,12 @@
 import type { MediaFile } from "../media/types";
 import type { PresetId } from "../media/presets";
 import type { SubtitleSelection } from "../media/ffmpegCommand";
-import { selectTracks, type TrackSelectionPreferences } from "../media/trackSelection";
+import {
+  selectSubtitleTracksForCopy,
+  selectTracks,
+  type TrackSelectionPreferences,
+} from "../media/trackSelection";
+import type { PlexKind } from "../media/plexNaming";
 import type { DiscoveredFile } from "../ipc/api";
 
 export type QueueItemStatus =
@@ -37,6 +42,8 @@ export interface QueueItem {
   subtitleReason: string | undefined;
   outputPath: string | undefined;
   progress: QueueItemProgress | undefined;
+  plexKind: PlexKind;
+  plexFilenameOverride: string | undefined;
 }
 
 function filenameFromPath(filePath: string): string {
@@ -60,6 +67,8 @@ export function createQueueItem(file: DiscoveredFile, defaultPresetId: PresetId)
     subtitleReason: undefined,
     outputPath: undefined,
     progress: undefined,
+    plexKind: "episode",
+    plexFilenameOverride: undefined,
   };
 }
 
@@ -82,15 +91,16 @@ export function deriveTrackSelection(
   preferences: TrackSelectionPreferences,
 ): DerivedTrackSelection {
   const selection = selectTracks(media, preferences);
-  const subtitleTrack = selection.subtitle.track;
+  const subtitleGroup = selectSubtitleTracksForCopy(media.subtitleTracks, preferences.subtitleLanguage);
 
   return {
     videoTrackIndex: media.videoTracks[0]?.index,
     audioTrackIndex: selection.audio.track?.index,
     audioReason: selection.audio.reason,
-    subtitleReason: selection.subtitle.reason,
-    subtitle: subtitleTrack
-      ? { mode: "copy", trackIndexes: [subtitleTrack.index] }
-      : { mode: "none", trackIndexes: [] },
+    subtitleReason: subtitleGroup.reason,
+    subtitle:
+      subtitleGroup.tracks.length > 0
+        ? { mode: "copy", trackIndexes: subtitleGroup.tracks.map((t) => t.index) }
+        : { mode: "none", trackIndexes: [] },
   };
 }

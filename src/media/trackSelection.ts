@@ -173,6 +173,46 @@ export function selectSubtitleTrack(
   return { track: best.track, reason, candidates };
 }
 
+export interface SubtitleTrackGroupSelection {
+  tracks: SubtitleTrack[];
+  reason: string;
+}
+
+/**
+ * Selects subtitle tracks to copy together: the best full-dialogue track,
+ * plus a separate signs/songs track if the source splits them out. Anime
+ * releases commonly ship dialogue and signs/songs as two distinct tracks
+ * that are meant to be watched together, so copying only the higher-scoring
+ * one (as selectSubtitleTrack does, for the single-track burn-in case)
+ * silently drops on-screen text and song translations.
+ */
+export function selectSubtitleTracksForCopy(
+  tracks: SubtitleTrack[],
+  preferredLanguage: string,
+): SubtitleTrackGroupSelection {
+  const primary = selectSubtitleTrack(tracks, preferredLanguage);
+  if (!primary.track) {
+    return { tracks: [], reason: primary.reason };
+  }
+
+  const signsSongsTrack = tracks.find(
+    (track) =>
+      track.index !== primary.track!.index &&
+      !titleContainsAny(track.title, TITLE_KEYWORDS.commentary) &&
+      titleContainsAny(track.title, TITLE_KEYWORDS.signsSongs) &&
+      (track.language === preferredLanguage || track.language === undefined),
+  );
+
+  if (!signsSongsTrack) {
+    return { tracks: [primary.track], reason: primary.reason };
+  }
+
+  return {
+    tracks: [primary.track, signsSongsTrack],
+    reason: `${primary.reason} Also including stream ${signsSongsTrack.index} ("${signsSongsTrack.title}") for signs/songs.`,
+  };
+}
+
 export interface TrackSelectionPreferences {
   audioLanguage: string;
   subtitleLanguage: string;

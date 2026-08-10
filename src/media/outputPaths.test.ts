@@ -81,6 +81,31 @@ describe("computeOutputPath", () => {
       path.join("Converted", "Fullmetal Alchemist - Brotherhood!", "Ep 01 (v2).mkv"),
     );
   });
+
+  it("uses plexPath instead of mirroring source structure when given", () => {
+    const result = computeOutputPath({
+      sourceRoot: path.join("Anime"),
+      filePath: path.join("Anime", "K-ONComplete18 BD-1", "title_t00.mkv"),
+      outputRoot: "Converted",
+      preserveStructure: true,
+      plexPath: { dirSegments: ["K-ON"], filename: "K-ON - s01e01.mkv" },
+    });
+
+    expect(result).toBe(path.join("Converted", "K-ON", "K-ON - s01e01.mkv"));
+  });
+
+  it("sanitizes plexPath segments and filename as defense in depth", () => {
+    const result = computeOutputPath({
+      sourceRoot: path.join("Anime"),
+      filePath: path.join("Anime", "Show", "title_t00.mkv"),
+      outputRoot: "Converted",
+      preserveStructure: true,
+      plexPath: { dirSegments: ["..", "Evil"], filename: "../../etc/passwd" },
+    });
+
+    expect(result.startsWith(path.join("Converted"))).toBe(true);
+    expect(result).not.toContain("..");
+  });
 });
 
 describe("hasOutputConflict", () => {

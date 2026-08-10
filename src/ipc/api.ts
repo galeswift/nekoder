@@ -18,6 +18,8 @@ export interface ResolveOutputPathRequest {
   filePath: string;
   outputRoot: string;
   preserveStructure: boolean;
+  /** When set, overrides preserveStructure with a Plex-shaped destination. */
+  plexPath?: { dirSegments: string[]; filename: string };
 }
 
 export interface ResolveOutputPathResponse {

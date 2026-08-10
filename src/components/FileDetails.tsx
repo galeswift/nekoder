@@ -1,32 +1,137 @@
 import type { QueueItem } from "../state/queueItem";
+import type { PlexGroupConfig } from "../state/plexGroups";
 import type { PresetId } from "../media/presets";
 import { PRESETS } from "../media/presets";
+import type { PlexKind } from "../media/plexNaming";
 import { isBurnableSubtitleCodec, type SubtitleMode } from "../media/ffmpegCommand";
 import { formatDuration } from "../format";
 
+export interface PlexInfo {
+  groupLabel: string;
+  group: PlexGroupConfig;
+  assignedEpisode: number | undefined;
+  assignedExtraIndex: number | undefined;
+  suggestedFilename: string;
+}
+
 interface FileDetailsProps {
   item: QueueItem;
+  plexInfo: PlexInfo;
   onChangePreset: (presetId: PresetId) => void;
   onChangeAudioTrack: (index: number) => void;
   onChangeSubtitleMode: (mode: SubtitleMode) => void;
   onToggleSubtitleTrack: (index: number) => void;
   onChangeBurnTrack: (index: number) => void;
+  onChangePlexEnabled: (enabled: boolean) => void;
+  onChangeShowName: (showName: string) => void;
+  onChangeSeason: (season: number) => void;
+  onChangeStartEpisode: (startEpisode: number) => void;
+  onChangeItemKind: (kind: PlexKind) => void;
+  onChangeFilenameOverride: (filenameOverride: string | undefined) => void;
 }
 
 export function FileDetails({
   item,
+  plexInfo,
   onChangePreset,
   onChangeAudioTrack,
   onChangeSubtitleMode,
   onToggleSubtitleTrack,
   onChangeBurnTrack,
+  onChangePlexEnabled,
+  onChangeShowName,
+  onChangeSeason,
+  onChangeStartEpisode,
+  onChangeItemKind,
+  onChangeFilenameOverride,
 }: FileDetailsProps) {
   const media = item.media;
   const hasBurnableTrack = media?.subtitleTracks.some((t) => isBurnableSubtitleCodec(t.codec)) ?? false;
   const burnUnavailableReason = "No text-based subtitle track available to burn in (only image-based tracks found).";
+  const filenameFieldValue = item.plexFilenameOverride ?? plexInfo.suggestedFilename;
 
   return (
     <div className="detail-panel">
+      <div className="section">
+        <div className="section-title">Plex naming</div>
+        <div className="field-row" style={{ marginBottom: 8 }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={plexInfo.group.enabled}
+              onChange={(e) => onChangePlexEnabled(e.target.checked)}
+            />{" "}
+            Use Plex-style naming for folder "{plexInfo.groupLabel}"
+          </label>
+        </div>
+        {plexInfo.group.enabled && (
+          <dl className="kv-grid">
+            <dt>Show name</dt>
+            <dd>
+              <input
+                type="text"
+                value={plexInfo.group.showName}
+                onChange={(e) => onChangeShowName(e.target.value)}
+              />
+            </dd>
+            <dt>Kind</dt>
+            <dd>
+              <select value={item.plexKind} onChange={(e) => onChangeItemKind(e.target.value as PlexKind)}>
+                <option value="episode">Episode</option>
+                <option value="movie">Movie</option>
+                <option value="extra">Extra</option>
+              </select>
+            </dd>
+            {item.plexKind === "episode" && (
+              <>
+                <dt>Season</dt>
+                <dd>
+                  <input
+                    type="number"
+                    min={1}
+                    value={plexInfo.group.season}
+                    onChange={(e) => onChangeSeason(e.target.value === "" ? 1 : Number(e.target.value))}
+                    style={{ width: 60 }}
+                  />
+                </dd>
+                <dt>Starting episode</dt>
+                <dd>
+                  <input
+                    type="number"
+                    min={1}
+                    value={plexInfo.group.startEpisode}
+                    onChange={(e) => onChangeStartEpisode(e.target.value === "" ? 1 : Number(e.target.value))}
+                    style={{ width: 60 }}
+                  />
+                </dd>
+                <dt>Episode #</dt>
+                <dd>{plexInfo.assignedEpisode ?? "—"}</dd>
+              </>
+            )}
+            {item.plexKind === "extra" && (
+              <>
+                <dt>Extra #</dt>
+                <dd>{plexInfo.assignedExtraIndex ?? "—"}</dd>
+              </>
+            )}
+            <dt>Output filename</dt>
+            <dd>
+              <input
+                type="text"
+                value={filenameFieldValue}
+                onChange={(e) => onChangeFilenameOverride(e.target.value)}
+                style={{ width: "100%" }}
+              />
+              {item.plexFilenameOverride !== undefined && (
+                <button type="button" onClick={() => onChangeFilenameOverride(undefined)}>
+                  Reset to suggested
+                </button>
+              )}
+            </dd>
+          </dl>
+        )}
+      </div>
+
       <div className="section">
         <div className="section-title">Source</div>
         <dl className="kv-grid">

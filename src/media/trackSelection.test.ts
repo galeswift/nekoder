@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeMediaFile, type RawFfprobeOutput } from "./ffprobe";
-import { selectAudioTrack, selectSubtitleTrack, selectTracks } from "./trackSelection";
+import { selectAudioTrack, selectSubtitleTrack, selectSubtitleTracksForCopy, selectTracks } from "./trackSelection";
 
 import japaneseAudioEnglishFullSubs from "./__fixtures__/japanese_audio_english_full_subs.json";
 import japaneseAndEnglishDub from "./__fixtures__/japanese_and_english_dub.json";
@@ -104,6 +104,26 @@ describe("selectSubtitleTrack", () => {
   it("returns undefined when there are no subtitle tracks", () => {
     const result = selectSubtitleTrack([], "eng");
     expect(result.track).toBeUndefined();
+  });
+});
+
+describe("selectSubtitleTracksForCopy", () => {
+  it("includes both the dialogue track and the separate signs/songs track", () => {
+    const media = load(signsAndSongsPlusDialogue);
+    const result = selectSubtitleTracksForCopy(media.subtitleTracks, "eng");
+    expect(result.tracks.map((t) => t.title)).toEqual(["Dialogue", "Signs & Songs"]);
+  });
+
+  it("returns just the single track when there is no separate signs/songs track", () => {
+    const media = load(commentaryAudio);
+    const result = selectSubtitleTracksForCopy(media.subtitleTracks, "eng");
+    expect(result.tracks).toHaveLength(1);
+    expect(result.tracks[0]?.title).toBe("Full Subtitles");
+  });
+
+  it("returns an empty list when there are no subtitle tracks", () => {
+    const result = selectSubtitleTracksForCopy([], "eng");
+    expect(result.tracks).toEqual([]);
   });
 });
 
