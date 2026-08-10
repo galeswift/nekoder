@@ -15,6 +15,7 @@ interface RunningEncode {
 
 let running: RunningEncode | undefined;
 let queueActive = false;
+let queueCancelled = false;
 
 function emitLog(window: BrowserWindow, level: "info" | "error", message: string): void {
   window.webContents.send(IPC_CHANNELS.log, { timestamp: Date.now(), level, message });
@@ -44,8 +45,13 @@ export async function startEncodeQueue(
   }
 
   queueActive = true;
+  queueCancelled = false;
   try {
     for (const item of items) {
+      if (queueCancelled) {
+        window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "cancelled" });
+        continue;
+      }
       await runOne(window, ffmpegPath, item);
     }
   } finally {
@@ -144,9 +150,13 @@ async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEnco
   }
 }
 
-/** Kills the currently running ffmpeg process if its id matches. No-op otherwise. */
+/**
+ * Kills the currently running ffmpeg process if its id matches, and stops the
+ * queue from advancing to subsequent items. No-op otherwise.
+ */
 export function cancelCurrentEncode(id: string): void {
   if (running && running.id === id) {
+    queueCancelled = true;
     running.cancelled = true;
     running.child.kill();
   }

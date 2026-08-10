@@ -14,7 +14,7 @@ vi.mock("node:child_process", () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
 }));
 
-const { startEncodeQueue } = await import("./encoding");
+const { startEncodeQueue, cancelCurrentEncode } = await import("./encoding");
 
 function fakeChild() {
   const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
@@ -102,5 +102,33 @@ describe("startEncodeQueue", () => {
 
     firstChild.emit("close", 0);
     await firstQueue;
+  });
+
+  it("cancelling the current encode stops the queue instead of starting the next item", async () => {
+    const firstChild = fakeChild();
+    spawnMock.mockImplementationOnce(() => firstChild);
+
+    const window = fakeWindow();
+    const item1 = baseItem({ id: "1" });
+    const item2 = baseItem({ id: "2" });
+    const queue = startEncodeQueue(window, "ffmpeg", [item1, item2]);
+
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+
+    cancelCurrentEncode("1");
+    expect(firstChild.kill).toHaveBeenCalled();
+    firstChild.emit("close", null);
+
+    await queue;
+
+    expect(spawnMock).toHaveBeenCalledTimes(1); // second item never spawned
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      IPC_CHANNELS.encodeStatus,
+      expect.objectContaining({ id: "1", status: "cancelled" }),
+    );
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      IPC_CHANNELS.encodeStatus,
+      expect.objectContaining({ id: "2", status: "cancelled" }),
+    );
   });
 });
