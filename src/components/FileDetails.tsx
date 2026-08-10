@@ -22,6 +22,8 @@ export function FileDetails({
   onChangeBurnTrack,
 }: FileDetailsProps) {
   const media = item.media;
+  const hasBurnableTrack = media?.subtitleTracks.some((t) => isBurnableSubtitleCodec(t.codec)) ?? false;
+  const burnUnavailableReason = "No text-based subtitle track available to burn in (only image-based tracks found).";
 
   return (
     <div className="detail-panel">
@@ -107,7 +109,9 @@ export function FileDetails({
         <div className="field-row" style={{ marginBottom: 8 }}>
           <select value={item.subtitle.mode} onChange={(e) => onChangeSubtitleMode(e.target.value as SubtitleMode)}>
             <option value="copy">Copy into output</option>
-            <option value="burn">Burn into video</option>
+            <option value="burn" disabled={!hasBurnableTrack} title={!hasBurnableTrack ? burnUnavailableReason : undefined}>
+              Burn into video
+            </option>
             <option value="none">No subtitles</option>
           </select>
         </div>

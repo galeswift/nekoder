@@ -31,15 +31,3 @@ export function findDuplicateOutputPaths(
 
   return duplicateIds;
 }
-
-/**
- * Best-effort guess at whether the current OS defaults to a case-sensitive
- * filesystem (Linux) vs. case-insensitive (Windows, macOS). Uses the
- * renderer-available `navigator.userAgent` rather than `node:os`, since
- * renderer code can't import Node built-ins directly (see
- * `PROJECT_STATUS.md`).
- */
-export function isLikelyCaseSensitiveFilesystem(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return navigator.userAgent.includes("Linux") && !navigator.userAgent.includes("Android");
-}

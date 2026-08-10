@@ -70,6 +70,7 @@ export interface DesktopApi {
   openFolder(): Promise<DiscoveredFile[]>;
   chooseOutputFolder(): Promise<string | undefined>;
   resolveOutputPath(request: ResolveOutputPathRequest): Promise<ResolveOutputPathResponse>;
+  isCaseSensitiveDirectory(directory: string): Promise<boolean>;
   probeMedia(path: string): Promise<ProbeMediaResponse>;
   checkFfmpegTools(): Promise<FfmpegToolsStatus>;
   browseForExecutable(kind: "ffmpeg" | "ffprobe"): Promise<string | undefined>;
@@ -87,6 +88,7 @@ export const IPC_CHANNELS = {
   openFolder: "files:openFolder",
   chooseOutputFolder: "files:chooseOutputFolder",
   resolveOutputPath: "files:resolveOutputPath",
+  checkCaseSensitivity: "files:checkCaseSensitivity",
   probeMedia: "media:probe",
   checkFfmpegTools: "media:checkTools",
   browseForExecutable: "media:browseForExecutable",

@@ -9,6 +9,7 @@ import { loadSettings, saveSettings } from "./ipc/settings";
 import { cancelCurrentEncode, startEncodeQueue } from "./ipc/encoding";
 import { parseSettings } from "../src/settings/types";
 import { locateTool } from "../src/media/toolLocator";
+import { isCaseSensitiveDirectory } from "../src/media/caseSensitivity";
 
 const isDev = !app.isPackaged;
 
@@ -58,6 +59,10 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.resolveOutputPath, (_event, request: ResolveOutputPathRequest) => {
     return resolveOutputPath(request);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.checkCaseSensitivity, (_event, directory: string) => {
+    return isCaseSensitiveDirectory(directory);
   });
 
   ipcMain.handle(IPC_CHANNELS.probeMedia, async (_event, filePath: string) => {

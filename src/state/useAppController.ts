@@ -4,7 +4,7 @@ import type { SubtitleMode } from "../media/ffmpegCommand";
 import type { AppSettings } from "../settings/types";
 import type { DiscoveredFile, FfmpegToolsStatus, LogEvent, QueueEncodeItem } from "../ipc/api";
 import { createQueueItem, deriveTrackSelection, type QueueItem, type QueueItemStatus } from "./queueItem";
-import { findDuplicateOutputPaths, isLikelyCaseSensitiveFilesystem } from "./conflictDetection";
+import { findDuplicateOutputPaths } from "./conflictDetection";
 import { selectBurnTrackIndexOnModeChange } from "./burnTrackSelection";
 
 function isInProgressOrDone(item: QueueItem): boolean {
@@ -240,11 +240,18 @@ export function useAppController() {
         candidates.map(async (item) => ({ item, outcome: await resolveOutputPath(item, currentSettings) })),
       );
 
+      // Probe the actual destination volume rather than guessing case
+      // sensitivity from the OS, which is wrong for case-sensitive macOS
+      // volumes, Linux mounts of case-insensitive filesystems, and network shares.
+      const caseSensitive = currentSettings.lastOutputDirectory
+        ? await window.desktop.isCaseSensitiveDirectory(currentSettings.lastOutputDirectory)
+        : false;
+
       const duplicateIds = findDuplicateOutputPaths(
         revalidated
           .filter(({ outcome }) => outcome.status === "ready")
           .map(({ item, outcome }) => ({ id: item.id, outputPath: outcome.outputPath! })),
-        { caseSensitive: isLikelyCaseSensitiveFilesystem() },
+        { caseSensitive },
       );
 
       const queueItems: QueueEncodeItem[] = [];

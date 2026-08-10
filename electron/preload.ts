@@ -26,6 +26,8 @@ const api: DesktopApi = {
   chooseOutputFolder: (): Promise<string | undefined> => ipcRenderer.invoke(IPC_CHANNELS.chooseOutputFolder),
   resolveOutputPath: (request: ResolveOutputPathRequest): Promise<ResolveOutputPathResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.resolveOutputPath, request),
+  isCaseSensitiveDirectory: (directory: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.checkCaseSensitivity, directory),
   probeMedia: (path: string): Promise<ProbeMediaResponse> => ipcRenderer.invoke(IPC_CHANNELS.probeMedia, path),
   checkFfmpegTools: (): Promise<FfmpegToolsStatus> => ipcRenderer.invoke(IPC_CHANNELS.checkFfmpegTools),
   browseForExecutable: (kind: "ffmpeg" | "ffprobe"): Promise<string | undefined> =>

@@ -14,28 +14,36 @@ describe("selectBurnTrackIndexOnModeChange", () => {
     expect(result).toBe(4);
   });
 
+  it("finds a burnable track among multiple copy-selections even when it isn't the first one selected", () => {
+    const tracks = [track(2, "hdmv_pgs_subtitle"), track(3, "ass"), track(4, "ass")];
+    // User copied both the PGS signs track (2) and the dialogue track (4); PGS was selected first.
+    const result = selectBurnTrackIndexOnModeChange({ mode: "copy", trackIndexes: [2, 4] }, tracks);
+    expect(result).toBe(4);
+  });
+
   it("keeps the current burn track when already burning", () => {
     const tracks = [track(2, "ass"), track(3, "ass")];
     const result = selectBurnTrackIndexOnModeChange({ mode: "burn", trackIndexes: [], burnTrackIndex: 3 }, tracks);
     expect(result).toBe(3);
   });
 
-  it("falls back to the first burnable track when nothing was selected", () => {
+  it("falls back to the first burnable track in the file when nothing is currently selected", () => {
     const tracks = [track(2, "ass"), track(3, "ass")];
     const result = selectBurnTrackIndexOnModeChange({ mode: "none", trackIndexes: [] }, tracks);
     expect(result).toBe(2);
   });
 
-  it("falls back to the first burnable track when the current selection isn't burnable", () => {
+  it("returns undefined when the current selection has no burnable track, without picking an unrelated one", () => {
     const tracks = [track(2, "hdmv_pgs_subtitle"), track(3, "ass")];
+    // Track 3 is burnable but wasn't selected by the user — must not be auto-picked here.
     const result = selectBurnTrackIndexOnModeChange({ mode: "copy", trackIndexes: [2] }, tracks);
-    expect(result).toBe(3);
+    expect(result).toBeUndefined();
   });
 
-  it("falls back to the first track at all when no track is burnable", () => {
+  it("returns undefined when nothing is selected and no track in the file is burnable", () => {
     const tracks = [track(2, "hdmv_pgs_subtitle"), track(3, "dvd_subtitle")];
     const result = selectBurnTrackIndexOnModeChange({ mode: "none", trackIndexes: [] }, tracks);
-    expect(result).toBe(2);
+    expect(result).toBeUndefined();
   });
 
   it("returns undefined when there are no subtitle tracks", () => {

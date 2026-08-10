@@ -4,25 +4,33 @@ import type { SubtitleTrack } from "../media/types";
 
 /**
  * Picks the subtitle track to burn in when the user switches subtitle mode
- * to "burn". Anime files commonly list signs/songs tracks before the
- * full-dialogue track, so this prefers whatever the user already had
- * selected (the burn track if already burning, or the first copy-selected
- * track) as long as it's burnable, only falling back to "first burnable
- * track in the file" when nothing was already selected or the selection
- * isn't burnable.
+ * to "burn". Scans every track the user currently has selected (all
+ * copy-selected tracks, in file order, or the current burn track) for a
+ * burnable one — anime files commonly list signs/songs before full-dialogue
+ * subtitles, so checking only the first selection could skip past a selected
+ * dialogue track in favor of an unrelated one. Falls back to the first
+ * burnable track in the file only when nothing is currently selected.
+ * Returns undefined when no candidate is burnable, rather than picking an
+ * unburnable track that would be guaranteed to fail at encode time — callers
+ * should disable the Burn option when the file has no burnable track at all.
  */
 export function selectBurnTrackIndexOnModeChange(
   currentSubtitle: SubtitleSelection,
   subtitleTracks: SubtitleTrack[],
 ): number | undefined {
-  const currentlySelectedIndex =
-    currentSubtitle.mode === "burn" ? currentSubtitle.burnTrackIndex : currentSubtitle.trackIndexes[0];
-  const currentlySelectedTrack = subtitleTracks.find((t) => t.index === currentlySelectedIndex);
+  const selectedIndexes = new Set(
+    currentSubtitle.mode === "burn"
+      ? currentSubtitle.burnTrackIndex !== undefined
+        ? [currentSubtitle.burnTrackIndex]
+        : []
+      : currentSubtitle.mode === "copy"
+        ? currentSubtitle.trackIndexes
+        : [],
+  );
 
-  if (currentlySelectedTrack && isBurnableSubtitleCodec(currentlySelectedTrack.codec)) {
-    return currentlySelectedTrack.index;
+  if (selectedIndexes.size > 0) {
+    return subtitleTracks.find((t) => selectedIndexes.has(t.index) && isBurnableSubtitleCodec(t.codec))?.index;
   }
 
-  const firstBurnable = subtitleTracks.find((t) => isBurnableSubtitleCodec(t.codec));
-  return (firstBurnable ?? subtitleTracks[0])?.index;
+  return subtitleTracks.find((t) => isBurnableSubtitleCodec(t.codec))?.index;
 }
