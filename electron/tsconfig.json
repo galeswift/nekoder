@@ -17,6 +17,11 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["**/*.ts", "../src/media/**/*.ts", "../src/settings/**/*.ts"],
-  "exclude": ["**/*.test.ts"]
+  "include": [
+    "**/*.ts",
+    "../src/media/**/*.ts",
+    "../src/settings/**/*.ts",
+    "../src/ipc/**/*.ts"
+  ],
+  "exclude": ["**/*.test.ts", "../src/**/*.test.ts", "../src/components/**", "../src/App.tsx", "../src/main.tsx"]
 }
