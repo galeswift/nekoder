@@ -151,12 +151,21 @@ async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEnco
 }
 
 /**
- * Kills the currently running ffmpeg process if its id matches, and stops the
- * queue from advancing to subsequent items. No-op otherwise.
+ * Cancels the active queue: kills whichever ffmpeg process is currently
+ * running (if any) and stops the queue from advancing to subsequent items.
+ *
+ * Ignores the passed id rather than requiring an exact match against
+ * `running.id`: the renderer only ever has one "current" item to cancel, but
+ * it derives that id from state that updates asynchronously, so right after
+ * one item finishes and the next starts, the renderer can briefly still be
+ * showing the previous item as encoding. Gating on queueActive instead means
+ * a cancel request in that window still cancels the queue instead of being a
+ * silent no-op. No-op if no queue is active.
  */
-export function cancelCurrentEncode(id: string): void {
-  if (running && running.id === id) {
-    queueCancelled = true;
+export function cancelCurrentEncode(_id: string): void {
+  if (!queueActive) return;
+  queueCancelled = true;
+  if (running) {
     running.cancelled = true;
     running.child.kill();
   }

@@ -102,7 +102,7 @@ wired end-to-end:
   group, kind writes directly to each item). Not yet clicked through in the
   running Electron app — only typechecked/built.
 
-153 unit tests pass (`npm test`), covering ffprobe normalization, track
+155 unit tests pass (`npm test`), covering ffprobe normalization, track
 selection heuristics, ffmpeg argument generation, output path preservation/
 conflict detection (including real filesystem case-sensitivity probing),
 burn-track selection, sequential-queue/concurrency guarding, progress
@@ -127,6 +127,39 @@ burnable one when switching from Copy to Burn mode, and replacing an
 OS-based case-sensitivity guess with an actual probe of the chosen output
 directory (`src/media/caseSensitivity.ts`, via a new
 `files:checkCaseSensitivity` IPC call).
+
+A fourth review pass (against the multi-select/bulk-edit + Plex naming code)
+found and fixed:
+- Naming/output-path controls (Plex toggle, show name, kind, season, start
+  episode, filename override) in `FileDetails.tsx` and `BulkEditPanel.tsx`
+  were still editable while a queue was starting/encoding, even though the
+  full queue (including resolved output paths) is submitted to the main
+  process up front — an edit to a not-yet-started item would change what the
+  UI showed without changing what ffmpeg actually wrote to. Fixed by
+  disabling those controls whenever `isEncoding || isStarting`
+  (`namingLocked` prop threaded from `App.tsx`).
+- `cancelCurrentEncode` (`electron/ipc/encoding.ts`) only killed the running
+  process if the renderer-supplied id matched `running.id` exactly; in the
+  brief window right as one queue item finishes and the next starts, the
+  renderer can still show the old id as "encoding" (state updates land on
+  the next render, not synchronously), making a cancel click in that window
+  a silent no-op. Fixed by gating on `queueActive` and cancelling whatever
+  is currently running, ignoring the passed id (there is only ever one
+  current item to cancel). Covered by new tests in `encoding.test.ts`.
+- `canStartQueue` used a hand-rolled `status === "ready"` check that had
+  drifted from the actual candidate-eligibility logic
+  (`startQueueCandidates`, which already treats `cancelled` items as
+  startable) — so after cancelling a queue, the Start Queue button stayed
+  disabled with no way back in except re-adding files. Fixed by deriving
+  `canStartQueue` from `startQueueCandidates` plus an output-directory
+  check, so it now matches what `onStartQueue` actually accepts.
+- Bulk "Set season" in `BulkEditPanel.tsx` applies to the whole Plex naming
+  group (per source folder), not just the selected files, but was labeled
+  "Apply to selected" — silently renaming unselected sibling files. Kept the
+  per-folder data model (an intentional design from the original Plex naming
+  work) but relabeled the control ("Set season for folder(s)" / "Apply to
+  folder(s)") and added a note showing exactly how many files/folders will
+  be touched, via a new `getBulkSeasonImpact` helper in `useAppController.ts`.
 
 ## Running / packaging
 

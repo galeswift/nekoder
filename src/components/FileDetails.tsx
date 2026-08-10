@@ -17,6 +17,7 @@ export interface PlexInfo {
 interface FileDetailsProps {
   item: QueueItem;
   plexInfo: PlexInfo;
+  namingLocked: boolean;
   onChangePreset: (presetId: PresetId) => void;
   onChangeAudioTrack: (index: number) => void;
   onChangeSubtitleMode: (mode: SubtitleMode) => void;
@@ -32,6 +33,7 @@ interface FileDetailsProps {
 export function FileDetails({
   item,
   plexInfo,
+  namingLocked,
   onChangePreset,
   onChangeAudioTrack,
   onChangeSubtitleMode,
@@ -52,11 +54,17 @@ export function FileDetails({
     <div className="detail-panel">
       <div className="section">
         <div className="section-title">Plex naming</div>
+        {namingLocked && (
+          <div className="reason" style={{ marginBottom: 8 }}>
+            Naming is locked while the queue is running, since output paths have already been submitted for encoding.
+          </div>
+        )}
         <div className="field-row" style={{ marginBottom: 8 }}>
           <label>
             <input
               type="checkbox"
               checked={plexInfo.group.enabled}
+              disabled={namingLocked}
               onChange={(e) => onChangePlexEnabled(e.target.checked)}
             />{" "}
             Use Plex-style naming for folder "{plexInfo.groupLabel}"
@@ -69,12 +77,17 @@ export function FileDetails({
               <input
                 type="text"
                 value={plexInfo.group.showName}
+                disabled={namingLocked}
                 onChange={(e) => onChangeShowName(e.target.value)}
               />
             </dd>
             <dt>Kind</dt>
             <dd>
-              <select value={item.plexKind} onChange={(e) => onChangeItemKind(e.target.value as PlexKind)}>
+              <select
+                value={item.plexKind}
+                disabled={namingLocked}
+                onChange={(e) => onChangeItemKind(e.target.value as PlexKind)}
+              >
                 <option value="episode">Episode</option>
                 <option value="movie">Movie</option>
                 <option value="extra">Extra</option>
@@ -88,6 +101,7 @@ export function FileDetails({
                     type="number"
                     min={1}
                     value={plexInfo.group.season}
+                    disabled={namingLocked}
                     onChange={(e) => onChangeSeason(e.target.value === "" ? 1 : Number(e.target.value))}
                     style={{ width: 60 }}
                   />
@@ -98,6 +112,7 @@ export function FileDetails({
                     type="number"
                     min={1}
                     value={plexInfo.group.startEpisode}
+                    disabled={namingLocked}
                     onChange={(e) => onChangeStartEpisode(e.target.value === "" ? 1 : Number(e.target.value))}
                     style={{ width: 60 }}
                   />
@@ -117,11 +132,12 @@ export function FileDetails({
               <input
                 type="text"
                 value={filenameFieldValue}
+                disabled={namingLocked}
                 onChange={(e) => onChangeFilenameOverride(e.target.value)}
                 style={{ width: "100%" }}
               />
               {item.plexFilenameOverride !== undefined && (
-                <button type="button" onClick={() => onChangeFilenameOverride(undefined)}>
+                <button type="button" disabled={namingLocked} onClick={() => onChangeFilenameOverride(undefined)}>
                   Reset to suggested
                 </button>
               )}

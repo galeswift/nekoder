@@ -257,6 +257,16 @@ export function useAppController() {
     if (settingsRef.current) void recomputeAllOutputPaths(settingsRef.current, plexGroupsRef.current, nextItems);
   }
 
+  /** How many folder-groups/files an "Apply to selected" season edit for itemIds will actually touch (season is per-folder, not per-file). */
+  function getBulkSeasonImpact(itemIds: string[]): { groupCount: number; fileCount: number } {
+    const idSet = new Set(itemIds);
+    const groupKeys = new Set(
+      itemsRef.current.filter((it) => idSet.has(it.id)).map((it) => groupKeyForFile(it.inputPath)),
+    );
+    const fileCount = itemsRef.current.filter((it) => groupKeys.has(groupKeyForFile(it.inputPath))).length;
+    return { groupCount: groupKeys.size, fileCount };
+  }
+
   function onBulkChangeSeason(itemIds: string[], season: number): void {
     const idSet = new Set(itemIds);
     const affectedGroupKeys = new Set(
@@ -478,7 +488,13 @@ export function useAppController() {
   }
 
   const isEncoding = items.some((it) => it.status === "encoding");
-  const canStartQueue = items.some((it) => it.status === "ready" && it.outputPath !== undefined);
+  // Mirrors the actual gating onStartQueue uses (startQueueCandidates), not
+  // just status === "ready": a cancelled item is still startable (cancelling
+  // doesn't gate on status === "ready", it only excludes in-progress/done
+  // items), so the button shouldn't stay disabled after a cancel just
+  // because nothing currently has "ready" status.
+  const canStartQueue =
+    settings?.lastOutputDirectory !== undefined && startQueueCandidates(items).length > 0;
   const selectedItems = items.filter((it) => selectedIds.includes(it.id));
   const selectedItem = selectedItems.length === 1 ? selectedItems[0] : undefined;
 
@@ -513,6 +529,7 @@ export function useAppController() {
     onChangeFilenameOverride,
     onBulkChangeKind,
     onBulkChangeSeason,
+    getBulkSeasonImpact,
     getPlexInfoForItem,
     onStartQueue,
     onCancelCurrent,

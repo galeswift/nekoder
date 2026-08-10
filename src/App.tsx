@@ -9,6 +9,7 @@ import { useAppController } from "./state/useAppController";
 export function App() {
   const controller = useAppController();
   const { settings, selectedItem, selectedItems } = controller;
+  const namingLocked = controller.isEncoding || controller.isStarting;
 
   return (
     <div className="app">
@@ -31,6 +32,8 @@ export function App() {
         {selectedItems.length > 1 ? (
           <BulkEditPanel
             items={selectedItems}
+            namingLocked={namingLocked}
+            seasonImpact={controller.getBulkSeasonImpact(controller.selectedIds)}
             onChangeKind={(kind) => controller.onBulkChangeKind(controller.selectedIds, kind)}
             onChangeSeason={(season) => controller.onBulkChangeSeason(controller.selectedIds, season)}
           />
@@ -38,6 +41,7 @@ export function App() {
           <FileDetails
             item={selectedItem}
             plexInfo={controller.getPlexInfoForItem(selectedItem)}
+            namingLocked={namingLocked}
             onChangePreset={(presetId) => controller.onChangePreset(selectedItem.id, presetId)}
             onChangeAudioTrack={(index) => controller.onChangeAudioTrack(selectedItem.id, index)}
             onChangeSubtitleMode={(mode) => controller.onChangeSubtitleMode(selectedItem.id, mode)}

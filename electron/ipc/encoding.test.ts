@@ -104,6 +104,34 @@ describe("startEncodeQueue", () => {
     await firstQueue;
   });
 
+  it("cancels the running process even when the passed id doesn't match it", async () => {
+    // Simulates the renderer's stale-id transition window: it still sends
+    // the id of the item it last knew was "encoding", which may not be the
+    // one actually running by the time the request arrives.
+    const firstChild = fakeChild();
+    spawnMock.mockImplementationOnce(() => firstChild);
+
+    const window = fakeWindow();
+    const item1 = baseItem({ id: "1" });
+    const item2 = baseItem({ id: "2" });
+    const queue = startEncodeQueue(window, "ffmpeg", [item1, item2]);
+
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+
+    cancelCurrentEncode("some-stale-or-mismatched-id");
+    expect(firstChild.kill).toHaveBeenCalled();
+    firstChild.emit("close", null);
+
+    await queue;
+
+    expect(spawnMock).toHaveBeenCalledTimes(1); // second item never spawned
+  });
+
+  it("does nothing when no queue is active", () => {
+    expect(() => cancelCurrentEncode("1")).not.toThrow();
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
   it("cancelling the current encode stops the queue instead of starting the next item", async () => {
     const firstChild = fakeChild();
     spawnMock.mockImplementationOnce(() => firstChild);
