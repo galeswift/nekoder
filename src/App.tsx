@@ -1,0 +1,58 @@
+import { Toolbar } from "./components/Toolbar";
+import { QueueList } from "./components/QueueList";
+import { FileDetails } from "./components/FileDetails";
+import { LogPanel } from "./components/LogPanel";
+import { SettingsModal } from "./components/SettingsModal";
+import { useAppController } from "./state/useAppController";
+
+export function App() {
+  const controller = useAppController();
+  const { settings, selectedItem } = controller;
+
+  return (
+    <div className="app">
+      <Toolbar
+        outputFolder={settings?.lastOutputDirectory}
+        isEncoding={controller.isEncoding}
+        canStartQueue={controller.canStartQueue}
+        onAddFiles={() => void controller.onAddFiles()}
+        onAddFolder={() => void controller.onAddFolder()}
+        onChooseOutputFolder={() => void controller.onChooseOutputFolder()}
+        onStartQueue={() => void controller.onStartQueue()}
+        onCancelCurrent={() => void controller.onCancelCurrent()}
+        onOpenSettings={() => controller.setShowSettings(true)}
+      />
+
+      <div className="main">
+        <QueueList items={controller.items} selectedId={controller.selectedId} onSelect={controller.onSelect} />
+
+        {selectedItem ? (
+          <FileDetails
+            item={selectedItem}
+            onChangePreset={(presetId) => controller.onChangePreset(selectedItem.id, presetId)}
+            onChangeAudioTrack={(index) => controller.onChangeAudioTrack(selectedItem.id, index)}
+            onChangeSubtitleMode={(mode) => controller.onChangeSubtitleMode(selectedItem.id, mode)}
+            onToggleSubtitleTrack={(index) => controller.onToggleSubtitleTrack(selectedItem.id, index)}
+            onChangeBurnTrack={(index) => controller.onChangeBurnTrack(selectedItem.id, index)}
+          />
+        ) : (
+          <div className="detail-panel">
+            <div className="detail-empty">Select a file from the queue to view its details.</div>
+          </div>
+        )}
+      </div>
+
+      <LogPanel entries={controller.logs} />
+
+      {controller.showSettings && settings && (
+        <SettingsModal
+          settings={settings}
+          toolsStatus={controller.toolsStatus}
+          onUpdate={(partial) => void controller.onUpdateSettings(partial)}
+          onBrowse={(kind) => void controller.onBrowseExecutable(kind)}
+          onClose={() => controller.setShowSettings(false)}
+        />
+      )}
+    </div>
+  );
+}

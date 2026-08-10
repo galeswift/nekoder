@@ -54,6 +54,7 @@ async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEnco
   }
 
   emitLog(window, "info", `ffmpeg ${args.join(" ")}`);
+  window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "encoding" });
 
   const child = spawn(ffmpegPath, args, { windowsHide: true });
   running = { id: item.id, child, cancelled: false };

@@ -2,7 +2,8 @@ import path from "node:path";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { IPC_CHANNELS, type QueueEncodeItem } from "../src/ipc/api";
 import { nodeProcessRunner } from "./nodeProcessRunner";
-import { chooseOutputFolderDialog, openFilesDialog, openFolderDialog } from "./ipc/files";
+import { chooseOutputFolderDialog, openFilesDialog, openFolderDialog, resolveOutputPath } from "./ipc/files";
+import type { ResolveOutputPathRequest } from "../src/ipc/api";
 import { browseForExecutable, checkFfmpegTools, probeMediaFile } from "./ipc/media";
 import { loadSettings, saveSettings } from "./ipc/settings";
 import { cancelCurrentEncode, startEncodeQueue } from "./ipc/encoding";
@@ -52,6 +53,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.chooseOutputFolder, (event) => {
     const window = BrowserWindow.fromWebContents(event.sender) ?? mainWindow!;
     return chooseOutputFolderDialog(window);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.resolveOutputPath, (_event, request: ResolveOutputPathRequest) => {
+    return resolveOutputPath(request);
   });
 
   ipcMain.handle(IPC_CHANNELS.probeMedia, async (_event, filePath: string) => {

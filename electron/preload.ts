@@ -9,6 +9,8 @@ import type {
   LogEvent,
   ProbeMediaResponse,
   QueueEncodeItem,
+  ResolveOutputPathRequest,
+  ResolveOutputPathResponse,
 } from "../src/ipc/api";
 import type { AppSettings } from "../src/settings/types";
 
@@ -22,6 +24,8 @@ const api: DesktopApi = {
   openFiles: (): Promise<DiscoveredFile[]> => ipcRenderer.invoke(IPC_CHANNELS.openFiles),
   openFolder: (): Promise<DiscoveredFile[]> => ipcRenderer.invoke(IPC_CHANNELS.openFolder),
   chooseOutputFolder: (): Promise<string | undefined> => ipcRenderer.invoke(IPC_CHANNELS.chooseOutputFolder),
+  resolveOutputPath: (request: ResolveOutputPathRequest): Promise<ResolveOutputPathResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.resolveOutputPath, request),
   probeMedia: (path: string): Promise<ProbeMediaResponse> => ipcRenderer.invoke(IPC_CHANNELS.probeMedia, path),
   checkFfmpegTools: (): Promise<FfmpegToolsStatus> => ipcRenderer.invoke(IPC_CHANNELS.checkFfmpegTools),
   browseForExecutable: (kind: "ffmpeg" | "ffprobe"): Promise<string | undefined> =>

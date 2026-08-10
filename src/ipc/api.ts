@@ -13,6 +13,18 @@ export interface DiscoveredFile {
 
 export type ProbeMediaResponse = { ok: true; media: MediaFile } | { ok: false; error: string };
 
+export interface ResolveOutputPathRequest {
+  sourceRoot: string;
+  filePath: string;
+  outputRoot: string;
+  preserveStructure: boolean;
+}
+
+export interface ResolveOutputPathResponse {
+  outputPath: string;
+  exists: boolean;
+}
+
 export interface QueueEncodeItem {
   id: string;
   inputPath: string;
@@ -55,6 +67,7 @@ export interface DesktopApi {
   openFiles(): Promise<DiscoveredFile[]>;
   openFolder(): Promise<DiscoveredFile[]>;
   chooseOutputFolder(): Promise<string | undefined>;
+  resolveOutputPath(request: ResolveOutputPathRequest): Promise<ResolveOutputPathResponse>;
   probeMedia(path: string): Promise<ProbeMediaResponse>;
   checkFfmpegTools(): Promise<FfmpegToolsStatus>;
   browseForExecutable(kind: "ffmpeg" | "ffprobe"): Promise<string | undefined>;
@@ -71,6 +84,7 @@ export const IPC_CHANNELS = {
   openFiles: "files:open",
   openFolder: "files:openFolder",
   chooseOutputFolder: "files:chooseOutputFolder",
+  resolveOutputPath: "files:resolveOutputPath",
   probeMedia: "media:probe",
   checkFfmpegTools: "media:checkTools",
   browseForExecutable: "media:browseForExecutable",
