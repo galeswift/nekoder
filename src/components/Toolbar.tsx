@@ -3,11 +3,13 @@ interface ToolbarProps {
   isEncoding: boolean;
   isStarting: boolean;
   canStartQueue: boolean;
+  selectedCount: number;
   onAddFiles: () => void;
   onAddFolder: () => void;
   onChooseOutputFolder: () => void;
   onStartQueue: () => void;
   onCancelCurrent: () => void;
+  onRemoveSelected: () => void;
   onOpenSettings: () => void;
 }
 
@@ -16,11 +18,13 @@ export function Toolbar({
   isEncoding,
   isStarting,
   canStartQueue,
+  selectedCount,
   onAddFiles,
   onAddFolder,
   onChooseOutputFolder,
   onStartQueue,
   onCancelCurrent,
+  onRemoveSelected,
   onOpenSettings,
 }: ToolbarProps) {
   return (
@@ -47,6 +51,9 @@ export function Toolbar({
       </button>
       <button className="btn btn-danger" onClick={onCancelCurrent} disabled={!isEncoding}>
         Cancel Current Encode
+      </button>
+      <button className="btn btn-danger" onClick={onRemoveSelected} disabled={selectedCount === 0}>
+        Remove Selected{selectedCount > 1 ? ` (${selectedCount})` : ""}
       </button>
       <button className="btn" onClick={onOpenSettings}>
         Settings

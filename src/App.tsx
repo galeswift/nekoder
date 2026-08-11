@@ -18,11 +18,13 @@ export function App() {
         isEncoding={controller.isEncoding}
         isStarting={controller.isStarting}
         canStartQueue={controller.canStartQueue}
+        selectedCount={controller.selectedIds.length}
         onAddFiles={() => void controller.onAddFiles()}
         onAddFolder={() => void controller.onAddFolder()}
         onChooseOutputFolder={() => void controller.onChooseOutputFolder()}
         onStartQueue={() => void controller.onStartQueue()}
         onCancelCurrent={() => void controller.onCancelCurrent()}
+        onRemoveSelected={controller.onRemoveSelected}
         onOpenSettings={() => controller.setShowSettings(true)}
       />
 

@@ -486,6 +486,19 @@ export function useAppController() {
     }
   }
 
+  function onRemoveSelected(): void {
+    // Encoding items can't be removed out from under an in-progress ffmpeg
+    // process; leave them in place and only drop the rest of the selection.
+    const removeIds = new Set(
+      itemsRef.current.filter((it) => selectedIds.includes(it.id) && it.status !== "encoding").map((it) => it.id),
+    );
+    if (removeIds.size === 0) return;
+    const nextItems = itemsRef.current.filter((it) => !removeIds.has(it.id));
+    setItems(nextItems);
+    setSelectedIds((prev) => prev.filter((id) => !removeIds.has(id)));
+    if (settingsRef.current) void recomputeAllOutputPaths(settingsRef.current, plexGroupsRef.current, nextItems);
+  }
+
   async function onCancelCurrent(): Promise<void> {
     const current = itemsRef.current.find((it) => it.status === "encoding");
     if (!current) return;
@@ -538,5 +551,6 @@ export function useAppController() {
     getPlexInfoForItem,
     onStartQueue,
     onCancelCurrent,
+    onRemoveSelected,
   };
 }
