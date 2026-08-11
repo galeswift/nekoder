@@ -355,7 +355,8 @@ table.tracks tr.track-selected {
   background: var(--error);
   color: #2a0d0a;
 }
-.status-conflict {
+.status-exists,
+.status-duplicate {
   background: var(--warn);
   color: #2a2005;
 }

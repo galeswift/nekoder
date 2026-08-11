@@ -103,7 +103,7 @@ export function useAppController() {
       preserveStructure: currentSettings.preserveDirectoryStructure,
       plexPath,
     });
-    return { outputPath, status: exists ? "conflict" : "ready" };
+    return { outputPath, status: exists ? "exists" : "ready" };
   }
 
   async function probeItem(item: QueueItem, currentSettings: AppSettings): Promise<QueueItem> {
@@ -417,11 +417,12 @@ export function useAppController() {
 
       // Candidate selection doesn't gate on the item's currently-stored
       // status: a rapid edit could have raced a recompute and left a stale
-      // "conflict" on an item that's actually fine, and status-gating here
-      // would silently drop it from the queue instead of giving it a chance
-      // to revalidate as ready. startQueueCandidates only requires a
-      // successful probe, not being in-progress/done, and a resolved video
-      // track; revalidation below determines the real ready/conflict status.
+      // "exists"/"duplicate" status on an item that's actually fine, and
+      // status-gating here would silently drop it from the queue instead of
+      // giving it a chance to revalidate as ready. startQueueCandidates only
+      // requires a successful probe, not being in-progress/done, and a
+      // resolved video track; revalidation below determines the real
+      // ready/exists/duplicate status.
       const candidates = startQueueCandidates(itemsRef.current);
       if (candidates.length === 0) return;
 
@@ -454,8 +455,12 @@ export function useAppController() {
 
       const queueItems: QueueEncodeItem[] = [];
       for (const { item, outcome } of revalidated) {
-        if (outcome.status === "conflict" || duplicateIds.has(item.id)) {
-          updateItem(item.id, { status: "conflict", outputPath: outcome.outputPath });
+        if (outcome.status === "exists") {
+          updateItem(item.id, { status: "exists", outputPath: outcome.outputPath });
+          continue;
+        }
+        if (duplicateIds.has(item.id)) {
+          updateItem(item.id, { status: "duplicate", outputPath: outcome.outputPath });
           continue;
         }
         updateItem(item.id, { status: "ready", outputPath: outcome.outputPath });

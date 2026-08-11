@@ -7,7 +7,8 @@ const LABELS: Record<QueueItemStatus, string> = {
   encoding: "Encoding",
   complete: "Complete",
   error: "Error",
-  conflict: "Conflict",
+  exists: "File Exists",
+  duplicate: "Naming Conflict",
   cancelled: "Cancelled",
 };
 

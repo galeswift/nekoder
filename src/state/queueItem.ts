@@ -17,7 +17,8 @@ export type QueueItemStatus =
   | "encoding"
   | "complete"
   | "error"
-  | "conflict"
+  | "exists"
+  | "duplicate"
   | "cancelled";
 
 export interface QueueItemProgress {
