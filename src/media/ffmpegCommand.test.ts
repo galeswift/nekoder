@@ -183,12 +183,61 @@ describe("buildFfmpegArgs", () => {
     expect(args).toContain("-shortest");
   });
 
-  it("does not force -shortest for burn tracks that don't involve the overlay filter", () => {
+  it("does not force -shortest or -t for burn tracks that don't involve the overlay filter", () => {
     const args = buildFfmpegArgs(
       baseRequest({ subtitle: { mode: "burn", trackIndexes: [2] } }),
     );
 
     expect(args).not.toContain("-shortest");
+    expect(args).not.toContain("-t");
+  });
+
+  it("bounds a bitmap burn with -t <probed duration> when duration is known", () => {
+    const args = buildFfmpegArgs(
+      baseRequest({
+        subtitle: { mode: "burn", trackIndexes: [2] },
+        subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+        durationSeconds: 1572.571,
+      }),
+    );
+
+    const tIndex = args.indexOf("-t");
+    expect(tIndex).toBeGreaterThan(-1);
+    expect(args[tIndex + 1]).toBe("1572.571");
+  });
+
+  it("still bounds a bitmap burn with -t when no audio track is selected — -shortest alone is a no-op with only one mapped stream", () => {
+    const args = buildFfmpegArgs(
+      baseRequest({
+        audioTrackIndex: undefined,
+        subtitle: { mode: "burn", trackIndexes: [2] },
+        subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+        durationSeconds: 1572.571,
+      }),
+    );
+
+    const mapIndexes = args.reduce<string[]>((acc, value, i) => {
+      if (args[i - 1] === "-map") acc.push(value);
+      return acc;
+    }, []);
+    expect(mapIndexes).toEqual(["[vout]"]); // no audio stream mapped at all
+
+    const tIndex = args.indexOf("-t");
+    expect(tIndex).toBeGreaterThan(-1);
+    expect(args[tIndex + 1]).toBe("1572.571");
+  });
+
+  it("omits -t when duration wasn't probed, relying on -shortest alone", () => {
+    const args = buildFfmpegArgs(
+      baseRequest({
+        subtitle: { mode: "burn", trackIndexes: [2] },
+        subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+        durationSeconds: undefined,
+      }),
+    );
+
+    expect(args).not.toContain("-t");
+    expect(args).toContain("-shortest");
   });
 
   it("never enables -fix_sub_duration — empirically breaks overlay subtitle compositing entirely", () => {

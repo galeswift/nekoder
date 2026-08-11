@@ -44,6 +44,12 @@ export interface EncodeRequest {
   subtitle: SubtitleSelection;
   /** All subtitle streams present in the input, in ffprobe stream order. Required for "burn" mode. */
   subtitleTracks?: SubtitleTrackInfo[];
+  /**
+   * The source's real duration as probed *before* encoding (e.g. ffprobe's
+   * container-level duration). Used to bound bitmap subtitle burn-in — see
+   * the `-t` usage below.
+   */
+  durationSeconds?: number;
 }
 
 /**
@@ -99,23 +105,38 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
 
   // A bitmap subtitle's last cue can report a bogus multi-hundred-hour
   // duration, and the `overlay` filter used to burn it in defaults to running
-  // until its longest input finishes. `-shortest` caps encoding at the muxer
-  // level once the (accurately-timed) video/audio streams finish, regardless
-  // of what the filtergraph thinks the subtitle input's length is.
+  // until its longest input finishes.
   //
-  // Deliberately an output-level flag rather than `overlay=shortest=1`: that
-  // filter option ends the whole filtergraph as soon as framesync considers
-  // either input "exhausted", which for a sparse subtitle stream can fire
-  // right after its last cue is consumed — well before the video ends —
-  // truncating the output and dropping subtitle compositing entirely
-  // (confirmed against a real Plex playback).
+  // Primary fix: `-t <probed source duration>` hard-caps the output at the
+  // real length established *before* encoding (ffprobe's container-level
+  // duration, captured in `durationSeconds`), independent of whatever the
+  // filtergraph thinks the subtitle input's length is, and independent of
+  // whether an audio track is even mapped. That last part matters: `-shortest`
+  // alone (see below) is a no-op whenever no audio track is selected — the
+  // filtered video ends up as the *only* mapped output stream, so there's
+  // nothing shorter for it to stop against, and the multi-hundred-hour
+  // duration comes right back.
+  //
+  // Secondary: `-shortest` still caps at the muxer level once the shortest
+  // *mapped* stream finishes, which additionally trims to a real audio
+  // track's length when that audio happens to end before the video does
+  // (verified against a real MakeMKV PGS rip — see PROJECT_STATUS.md).
+  //
+  // Deliberately not `overlay=shortest=1`: that filter option ends the whole
+  // filtergraph as soon as framesync considers either input "exhausted",
+  // which for a sparse subtitle stream can fire right after its last cue is
+  // consumed — well before the video ends — truncating the output and
+  // dropping subtitle compositing entirely (confirmed against a real Plex
+  // playback).
   //
   // Deliberately *not* paired with `-fix_sub_duration`: that option was
   // tried too, but empirically (verified against a real MakeMKV PGS rip —
   // see PROJECT_STATUS.md) it breaks `overlay`'s subtitle compositing
-  // outright, so nothing burns in at all. `-shortest` alone already fully
-  // solves the duration problem, so `-fix_sub_duration` isn't needed.
+  // outright, so nothing burns in at all.
   if (hasBitmapBurnTrack(request)) {
+    if (request.durationSeconds !== undefined && request.durationSeconds > 0) {
+      args.push("-t", String(request.durationSeconds));
+    }
     args.push("-shortest");
   }
 

@@ -6,12 +6,12 @@ import { IPC_CHANNELS, type QueueEncodeItem } from "../../src/ipc/api";
 
 const mkdirMock = vi.fn().mockResolvedValue(undefined);
 const rmMock = vi.fn().mockResolvedValue(undefined);
-const renameMock = vi.fn().mockResolvedValue(undefined);
+const linkMock = vi.fn().mockResolvedValue(undefined);
 vi.mock("node:fs/promises", () => ({
   default: {
     mkdir: (...args: unknown[]) => mkdirMock(...args),
     rm: (...args: unknown[]) => rmMock(...args),
-    rename: (...args: unknown[]) => renameMock(...args),
+    link: (...args: unknown[]) => linkMock(...args),
   },
 }));
 
@@ -49,14 +49,19 @@ function baseItem(overrides: Partial<QueueEncodeItem> = {}): QueueEncodeItem {
   };
 }
 
+/** Mirrors the item-id-scoped naming in encoding.ts's partialOutputPath. */
+function partialPathFor(item: QueueEncodeItem): string {
+  return path.join(path.dirname(item.outputPath), `Episode.${item.id}.partial.mkv`);
+}
+
 describe("startEncodeQueue", () => {
   beforeEach(() => {
     mkdirMock.mockClear();
     mkdirMock.mockResolvedValue(undefined);
     rmMock.mockClear();
     rmMock.mockResolvedValue(undefined);
-    renameMock.mockClear();
-    renameMock.mockResolvedValue(undefined);
+    linkMock.mockClear();
+    linkMock.mockResolvedValue(undefined);
     spawnMock.mockReset();
   });
 
@@ -137,10 +142,10 @@ describe("startEncodeQueue", () => {
     expect(spawnMock).toHaveBeenCalledTimes(1); // second item never spawned
   });
 
-  it("encodes to a sibling .partial file and renames it to the real output on success", async () => {
+  it("encodes to an id-scoped sibling .partial file and links+removes it to finalize the real output", async () => {
     const child = fakeChild();
     const item = baseItem();
-    const partialPath = path.join(path.dirname(item.outputPath), "Episode.partial.mkv");
+    const partialPath = partialPathFor(item);
     spawnMock.mockImplementation((_ffmpeg, args: string[]) => {
       // The output path is the last ffmpeg argument.
       expect(args.at(-1)).toBe(partialPath);
@@ -150,10 +155,61 @@ describe("startEncodeQueue", () => {
 
     await startEncodeQueue(fakeWindow(), "ffmpeg", [item]);
 
-    expect(renameMock).toHaveBeenCalledWith(partialPath, item.outputPath);
+    expect(linkMock).toHaveBeenCalledWith(partialPath, item.outputPath);
+    expect(rmMock).toHaveBeenCalledWith(partialPath, { force: true });
   });
 
-  it("removes the partial file instead of renaming it when ffmpeg fails", async () => {
+  it("scopes the partial filename to the item id so two queued items never collide, and a fixed name can't shadow an unrelated user file", async () => {
+    const child1 = fakeChild();
+    const child2 = fakeChild();
+    const item1 = baseItem({ id: "aaa" });
+    const item2 = baseItem({ id: "bbb" });
+    const seenOutputPaths: string[] = [];
+    spawnMock.mockImplementationOnce((_ffmpeg, args: string[]) => {
+      seenOutputPaths.push(args.at(-1)!);
+      queueMicrotask(() => child1.emit("close", 0));
+      return child1;
+    });
+    spawnMock.mockImplementationOnce((_ffmpeg, args: string[]) => {
+      seenOutputPaths.push(args.at(-1)!);
+      queueMicrotask(() => child2.emit("close", 0));
+      return child2;
+    });
+
+    await startEncodeQueue(fakeWindow(), "ffmpeg", [item1, item2]);
+
+    expect(seenOutputPaths).toEqual([partialPathFor(item1), partialPathFor(item2)]);
+    expect(new Set(seenOutputPaths).size).toBe(2);
+  });
+
+  it("does not overwrite an existing destination file: reports an error and cleans up the temp file when link fails (e.g. EEXIST)", async () => {
+    const child = fakeChild();
+    const item = baseItem();
+    const partialPath = partialPathFor(item);
+    spawnMock.mockImplementation(() => {
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    });
+    const linkError = Object.assign(new Error("EEXIST: file already exists"), { code: "EEXIST" });
+    linkMock.mockRejectedValueOnce(linkError);
+
+    const window = fakeWindow();
+    await startEncodeQueue(window, "ffmpeg", [item]);
+
+    expect(linkMock).toHaveBeenCalledWith(partialPath, item.outputPath);
+    expect(rmMock).toHaveBeenCalledWith(partialPath, { force: true });
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      IPC_CHANNELS.encodeStatus,
+      expect.objectContaining({ id: "1", status: "error" }),
+    );
+    // Critically, a failed finalize must never be reported as "complete".
+    expect(window.webContents.send).not.toHaveBeenCalledWith(
+      IPC_CHANNELS.encodeStatus,
+      expect.objectContaining({ id: "1", status: "complete" }),
+    );
+  });
+
+  it("removes the partial file instead of linking it when ffmpeg fails", async () => {
     const child = fakeChild();
     spawnMock.mockImplementation(() => {
       queueMicrotask(() => child.emit("close", 1));
@@ -162,10 +218,10 @@ describe("startEncodeQueue", () => {
 
     const window = fakeWindow();
     const item = baseItem();
-    const partialPath = path.join(path.dirname(item.outputPath), "Episode.partial.mkv");
+    const partialPath = partialPathFor(item);
     await startEncodeQueue(window, "ffmpeg", [item]);
 
-    expect(renameMock).not.toHaveBeenCalled();
+    expect(linkMock).not.toHaveBeenCalled();
     expect(rmMock).toHaveBeenCalledWith(partialPath, { force: true });
     expect(window.webContents.send).toHaveBeenCalledWith(
       IPC_CHANNELS.encodeStatus,
@@ -173,13 +229,13 @@ describe("startEncodeQueue", () => {
     );
   });
 
-  it("removes the partial file instead of renaming it when the encode is cancelled", async () => {
+  it("removes the partial file instead of linking it when the encode is cancelled", async () => {
     const child = fakeChild();
     spawnMock.mockImplementationOnce(() => child);
 
     const window = fakeWindow();
     const item = baseItem();
-    const partialPath = path.join(path.dirname(item.outputPath), "Episode.partial.mkv");
+    const partialPath = partialPathFor(item);
     const queue = startEncodeQueue(window, "ffmpeg", [item]);
 
     await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
@@ -187,7 +243,7 @@ describe("startEncodeQueue", () => {
     child.emit("close", null);
     await queue;
 
-    expect(renameMock).not.toHaveBeenCalled();
+    expect(linkMock).not.toHaveBeenCalled();
     expect(rmMock).toHaveBeenCalledWith(partialPath, { force: true });
   });
 

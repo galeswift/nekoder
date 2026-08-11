@@ -63,11 +63,19 @@ export async function startEncodeQueue(
  * Ffmpeg writes to this sibling path instead of the final destination, so a
  * failed or cancelled encode never leaves a partial file at `outputPath` that
  * would make the next start mistake it for a real conflict.
+ *
+ * The queue item's id (a `crypto.randomUUID()`, stable for the item's
+ * lifetime — see `queueItem.ts`) is embedded in the filename rather than
+ * using a fixed `.partial` suffix alone. A fixed suffix could collide with
+ * an unrelated file a user happens to have at that exact path, which the
+ * pre-encode cleanup below would then delete outright; the id makes that
+ * essentially impossible while still cleaning up this item's own leftover
+ * temp file on retry.
  */
-function partialOutputPath(outputPath: string): string {
+function partialOutputPath(outputPath: string, itemId: string): string {
   const ext = path.extname(outputPath);
   const base = path.basename(outputPath, ext);
-  return path.join(path.dirname(outputPath), `${base}.partial${ext}`);
+  return path.join(path.dirname(outputPath), `${base}.${itemId}.partial${ext}`);
 }
 
 async function removeIfExists(filePath: string): Promise<void> {
@@ -76,7 +84,7 @@ async function removeIfExists(filePath: string): Promise<void> {
 
 async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEncodeItem): Promise<void> {
   const preset = PRESETS[item.presetId];
-  const tempOutputPath = partialOutputPath(item.outputPath);
+  const tempOutputPath = partialOutputPath(item.outputPath, item.id);
 
   let args: string[];
   try {
@@ -92,6 +100,7 @@ async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEnco
         audioTrackIndex: item.audioTrackIndex,
         subtitle: item.subtitle,
         subtitleTracks: item.subtitleTracks,
+        durationSeconds: item.durationSeconds,
       }),
     ];
   } catch (error) {
@@ -161,13 +170,25 @@ async function runOne(window: BrowserWindow, ffmpegPath: string, item: QueueEnco
     window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "cancelled" });
   } else if (exitCode === 0) {
     try {
-      await fs.rename(tempOutputPath, item.outputPath);
-      window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "complete" });
+      // fs.rename would silently overwrite an existing destination on POSIX
+      // (and the queue's pre-encode conflict check can't rule out a
+      // destination appearing mid-encode, which can run for many minutes).
+      // fs.link fails with EEXIST instead of clobbering, so a file that
+      // showed up at outputPath during encoding is treated as a genuine
+      // conflict rather than silently replaced.
+      await fs.link(tempOutputPath, item.outputPath);
     } catch (error) {
+      await removeIfExists(tempOutputPath);
       const message = error instanceof Error ? error.message : String(error);
       emitLog(window, "error", `Failed to finalize output file: ${message}`);
       window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "error", error: message });
+      return;
     }
+    // The link succeeded, so outputPath now has the finished file; this is
+    // just discarding the temp copy and isn't allowed to turn a successful
+    // finalize into a reported error.
+    await removeIfExists(tempOutputPath);
+    window.webContents.send(IPC_CHANNELS.encodeStatus, { id: item.id, status: "complete" });
   } else {
     await removeIfExists(tempOutputPath);
     window.webContents.send(IPC_CHANNELS.encodeStatus, {
