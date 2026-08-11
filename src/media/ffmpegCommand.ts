@@ -96,6 +96,22 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
 
   const args: string[] = ["-hide_banner", "-n", "-i", request.inputPath];
 
+  // ffmpeg's sub2video mechanism (used to feed a subtitle stream into
+  // `overlay`) breaks when two *different* subtitle streams of the same
+  // input are each fed into their own `overlay` stage of one filter_complex
+  // chain: the first stage's subtitle compositing silently stops updating
+  // partway through the file (confirmed empirically — extracted frames from
+  // a real two-PGS-track encode of the K-ON S1E1 source showed the burned-in
+  // dialogue line freeze at ~4 minutes in and never change again, even
+  // though the underlying subtitle stream had cues throughout; reproduced
+  // with a single `overlay` of one track working fine, and fixed by giving
+  // the second track its own `-i` of the same file below). Opening the file
+  // again per bitmap track gives each its own independent demux/decode
+  // context and sidesteps the bug.
+  for (let i = 0; i < countBitmapBurnTracks(request); i++) {
+    args.push("-i", request.inputPath);
+  }
+
   if (hasBitmapBurnTrack(request)) {
     args.push("-map", "[vout]");
   } else {
@@ -159,6 +175,15 @@ function hasBitmapBurnTrack(request: EncodeRequest): boolean {
   });
 }
 
+/** How many bitmap subtitle tracks are being burned in — one dedicated extra `-i` is needed per track, see below. */
+function countBitmapBurnTracks(request: EncodeRequest): number {
+  if (request.subtitle.mode !== "burn") return 0;
+  return request.subtitle.trackIndexes.filter((index) => {
+    const track = request.subtitleTracks!.find((t) => t.index === index)!;
+    return isBitmapSubtitleCodec(track.codec);
+  }).length;
+}
+
 function videoArgs(request: EncodeRequest): string[] {
   const { video } = request.preset;
 
@@ -197,6 +222,9 @@ function buildBurnFilterComplex(request: EncodeRequest): string {
   const indexes = request.subtitle.trackIndexes;
   const steps: string[] = [];
   let current = `[0:${request.videoTrackIndex}]`;
+  // Each bitmap track gets its own dedicated `-i` of the same file (added in
+  // buildFfmpegArgs), input indexes 1, 2, ... — see the note there for why.
+  let bitmapInputIndex = 1;
 
   indexes.forEach((index, i) => {
     const ordinal = request.subtitleTracks!.findIndex((t) => t.index === index);
@@ -204,7 +232,8 @@ function buildBurnFilterComplex(request: EncodeRequest): string {
     const outLabel = i === indexes.length - 1 ? "[vout]" : `[v${i}]`;
 
     if (isBitmapSubtitleCodec(track.codec)) {
-      steps.push(`${current}[0:s:${ordinal}]overlay${outLabel}`);
+      steps.push(`${current}[${bitmapInputIndex}:s:${ordinal}]overlay${outLabel}`);
+      bitmapInputIndex++;
     } else {
       steps.push(`${current}subtitles='${path}':si=${ordinal}${outLabel}`);
     }

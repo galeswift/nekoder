@@ -165,10 +165,20 @@ describe("buildFfmpegArgs", () => {
     );
 
     expect(args).not.toContain("-vf");
-    expect(args.slice(0, 4)).toEqual(["-hide_banner", "-n", "-i", baseRequest().inputPath]);
+    // The bitmap track gets its own dedicated extra `-i` of the same file
+    // (see buildFfmpegArgs) — input 0 is video/audio, input 1 is the overlay
+    // source for this track.
+    expect(args.slice(0, 6)).toEqual([
+      "-hide_banner",
+      "-n",
+      "-i",
+      baseRequest().inputPath,
+      "-i",
+      baseRequest().inputPath,
+    ]);
     const fcIndex = args.indexOf("-filter_complex");
     expect(fcIndex).toBeGreaterThan(-1);
-    expect(args[fcIndex + 1]).toBe("[0:0][0:s:0]overlay[vout]");
+    expect(args[fcIndex + 1]).toBe("[0:0][1:s:0]overlay[vout]");
 
     // Only the filtered stream should be mapped for video — mapping the raw
     // input track too would produce two video streams in the output.
@@ -295,8 +305,36 @@ describe("buildFfmpegArgs", () => {
 
     const fcIndex = args.indexOf("-filter_complex");
     expect(args[fcIndex + 1]).toBe(
-      `[0:0]subtitles='C\\:/rips/Cowboy Bebop/Episode 01.mkv':si=0[v0];[v0][0:s:1]overlay[vout]`,
+      `[0:0]subtitles='C\\:/rips/Cowboy Bebop/Episode 01.mkv':si=0[v0];[v0][1:s:1]overlay[vout]`,
     );
+  });
+
+  it("gives each bitmap burn track its own dedicated -i, not a shared overlay input", () => {
+    // Regression test: chaining two `overlay` filters that both pull their
+    // subtitle stream from the *same* ffmpeg input (e.g. a dialogue track
+    // and a signs/songs track, both PGS) causes ffmpeg's sub2video
+    // compositing to silently freeze partway through the file on the first
+    // overlay stage — confirmed against a real two-PGS-track K-ON encode,
+    // where the burned-in dialogue line stopped updating a few minutes in
+    // and stayed frozen for the rest of the episode, even though the source
+    // subtitle stream had cues throughout. Giving each bitmap track its own
+    // `-i` of the same file (its own demux/decode context) fixes it.
+    const args = buildFfmpegArgs(
+      baseRequest({
+        subtitle: { mode: "burn", trackIndexes: [2, 3] },
+        subtitleTracks: [
+          { index: 2, codec: "hdmv_pgs_subtitle" },
+          { index: 3, codec: "hdmv_pgs_subtitle" },
+        ],
+        durationSeconds: 1572.571,
+      }),
+    );
+
+    const inputFlagCount = args.filter((a) => a === "-i").length;
+    expect(inputFlagCount).toBe(3); // main input + one dedicated input per bitmap track
+
+    const fcIndex = args.indexOf("-filter_complex");
+    expect(args[fcIndex + 1]).toBe("[0:0][1:s:0]overlay[v0];[v0][2:s:1]overlay[vout]");
   });
 
   it("maps the selected video track into the filter graph, not a hardcoded track 0", () => {
@@ -310,7 +348,7 @@ describe("buildFfmpegArgs", () => {
     );
 
     const fcIndex = args.indexOf("-filter_complex");
-    expect(args[fcIndex + 1]).toBe("[0:4][0:s:0]overlay[vout]");
+    expect(args[fcIndex + 1]).toBe("[0:4][1:s:0]overlay[vout]");
   });
 
   it("rejects burning in an unsupported subtitle codec", () => {

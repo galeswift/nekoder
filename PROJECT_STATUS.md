@@ -265,6 +265,34 @@ found and fixed:
   from the OS, so it should be correct for case-sensitive macOS/Windows
   volumes and network shares too — but it has only been exercised via mocked
   `fs`, not against a real case-sensitive volume.
+- A fifth review-independent bug, found from a real user report ("subtitles work
+  for the first 4-5 minutes then get stuck on the last thing they were
+  showing") against the actual packaged app's output
+  (`D:\ForPlex\K-ON\K-ON - s01e01.mkv`): burning in *two* bitmap subtitle
+  tracks (dialogue + signs/songs, both PGS — this app's default burn
+  selection for a source with split tracks) chains two `overlay` filter
+  stages that each pull their subtitle stream from the same ffmpeg input
+  (`[0:s:0]` then `[0:s:1]`). FFmpeg's `sub2video` subtitle-to-video
+  compositing breaks in this configuration: the first stage silently stops
+  updating a few minutes in and freezes on whatever was last displayed for
+  the rest of the file, even though the underlying subtitle stream has cues
+  throughout. Confirmed by extracting frames from the real output and from
+  hand-built reproduction encodes: a single bitmap track overlaid alone
+  updates correctly for the full episode; chaining a second one reproduces
+  the freeze at ~4-5 minutes every time, regardless of preset/CRF. Fixed in
+  `buildFfmpegArgs`/`buildBurnFilterComplex` (`src/media/ffmpegCommand.ts`)
+  by giving each bitmap subtitle track its own dedicated extra `-i` of the
+  same input file (its own independent demux/decode context) instead of
+  sharing input 0's subtitle stream across overlay stages — e.g. two bitmap
+  tracks now produce `-i src -i src -i src ... -filter_complex
+  "[0:v][1:s:0]overlay[v0];[v0][2:s:1]overlay[vout]"`. Verified against a
+  full-length real encode of the same source file: output duration still
+  correct (1572.571s) and burned-in subtitles update correctly checked at
+  4:30, 5:00 (the previous freeze point), 10:00, 20:00, and into the 23:20
+  ending song — no freeze anywhere in the episode. Added regression test
+  `"gives each bitmap burn track its own dedicated -i, not a shared overlay
+  input"` and updated the existing single/mixed-track filter_complex
+  assertions in `ffmpegCommand.test.ts` for the new input numbering.
 - `AGENTS.md`, `CLAUDE.md`, and `README.md` in the repo root are maintained
   directly by the user (README.md currently holds the original project brief,
   not yet the practical developer README described in the brief's
