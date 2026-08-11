@@ -76,17 +76,7 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
     }
   }
 
-  const args: string[] = ["-hide_banner", "-n"];
-
-  // Some bitmap subtitle codecs represent "display until the next subtitle"
-  // with a UINT32_MAX millisecond duration. Once converted to video frames by
-  // filter_complex, that sentinel can make the Matroska output appear to be
-  // 4,294,967 seconds long and destroys seeking. This input option resolves
-  // each subtitle's real duration from the following subtitle packet.
-  if (hasBitmapBurnTrack(request)) {
-    args.push("-fix_sub_duration");
-  }
-  args.push("-i", request.inputPath);
+  const args: string[] = ["-hide_banner", "-n", "-i", request.inputPath];
 
   if (hasBitmapBurnTrack(request)) {
     args.push("-map", "[vout]");
@@ -106,6 +96,28 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
   args.push(...audioArgs(request));
   args.push(...subtitleArgs(request));
   args.push(...dispositionArgs(request));
+
+  // A bitmap subtitle's last cue can report a bogus multi-hundred-hour
+  // duration, and the `overlay` filter used to burn it in defaults to running
+  // until its longest input finishes. `-shortest` caps encoding at the muxer
+  // level once the (accurately-timed) video/audio streams finish, regardless
+  // of what the filtergraph thinks the subtitle input's length is.
+  //
+  // Deliberately an output-level flag rather than `overlay=shortest=1`: that
+  // filter option ends the whole filtergraph as soon as framesync considers
+  // either input "exhausted", which for a sparse subtitle stream can fire
+  // right after its last cue is consumed — well before the video ends —
+  // truncating the output and dropping subtitle compositing entirely
+  // (confirmed against a real Plex playback).
+  //
+  // Deliberately *not* paired with `-fix_sub_duration`: that option was
+  // tried too, but empirically (verified against a real MakeMKV PGS rip —
+  // see PROJECT_STATUS.md) it breaks `overlay`'s subtitle compositing
+  // outright, so nothing burns in at all. `-shortest` alone already fully
+  // solves the duration problem, so `-fix_sub_duration` isn't needed.
+  if (hasBitmapBurnTrack(request)) {
+    args.push("-shortest");
+  }
 
   args.push(request.outputPath);
 

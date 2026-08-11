@@ -194,12 +194,46 @@ found and fixed:
   duplicate-destination detection) was extracted into plain, hook-free
   modules under `src/state/` so it could still be unit-tested without a DOM.
 - Subtitle burn-in (`-vf subtitles=...`) is implemented in
-  `src/media/ffmpegCommand.ts` and wired into the UI/main process, with
-  image-based (PGS/DVD/DVB) codecs explicitly rejected rather than silently
-  producing a broken filter, but it has not been exercised against a real
-  ASS/PGS file end-to-end.
-- No real-media end-to-end encode has been run yet (no sample MKV available
-  in this session) — only the dev-mode window launch was visually verified.
+  `src/media/ffmpegCommand.ts` and wired into the UI/main process. Image-based
+  (PGS/DVD/DVB) subtitles are burned in via an `overlay`-based
+  `-filter_complex` graph instead of the text-only `subtitles` filter (see
+  `buildBurnFilterComplex`). This path went through three iterations, the
+  last two caught only by testing against a real MakeMKV PGS rip (K-ON S1,
+  `D:\Video\K-ON _Season1+2\...\title_t00.mkv`, streams 0/3/5) end-to-end —
+  ffprobing the output and diffing extracted frames with/without the overlay,
+  not just unit tests:
+  1. Bitmap subtitle demuxers can report a UINT32_MAX-derived (~1193 hour)
+     duration for a track's last cue (no following packet to bound it
+     against), and `overlay` by default runs until its longest input
+     finishes — inflating the whole output's duration and corrupting seeking
+     in Plex/VLC.
+  2. First attempted via `overlay=shortest=1`. Wrong: that's the filter's
+     internal framesync logic, which ends the whole graph as soon as either
+     input is "exhausted" — for a sparse bitmap subtitle stream (frames only
+     at cue changes) that fired right after its last cue was consumed, well
+     before the video's real end, truncating output and dropping subtitle
+     compositing entirely (confirmed against real Plex playback: no
+     burned-in subtitles, seeking near the end froze on a repeated frame).
+  3. Replaced with a global `-shortest` **output** flag, which caps encoding
+     at the muxer level once the accurately-timed video/audio streams finish
+     — but `-fix_sub_duration` (added in the same commit as fix #1, to repair
+     the bogus last-cue duration at the source) turned out to independently
+     and empirically break `overlay`'s subtitle compositing outright, with no
+     warning or error — verified by generating real args via
+     `buildFfmpegArgs` and running them against the source file, extracting
+     frames with vs. without `-fix_sub_duration` at a timestamp with a known
+     active subtitle cue. `-shortest` alone already fully solves the
+     duration problem (it's driven by when the real audio stream ends, not
+     by any subtitle timing), so `-fix_sub_duration` was dropped entirely.
+  Final state (`-i input -filter_complex "...overlay[vout]" ... -shortest`)
+  verified correct against a full-episode encode of the source file above:
+  subtitles render at multiple points from early to late in the episode, and
+  the output's duration matches the source's real (audio-driven) length —
+  note the source file itself is one where the video track runs ~2 minutes
+  longer than all four of its audio tracks (all end around 1453s vs. the
+  video's 1572.571s container duration), so `-shortest` correctly truncates
+  to the audio's real end; that's a property of this particular BD rip, not
+  a bug.
 - Case-sensitivity detection for duplicate-destination checking
   (`src/media/caseSensitivity.ts`) probes the actual chosen output directory
   (writes and looks up a differently-cased marker file) rather than guessing
