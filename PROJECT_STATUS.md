@@ -233,7 +233,21 @@ found and fixed:
   longer than all four of its audio tracks (all end around 1453s vs. the
   video's 1572.571s container duration), so `-shortest` correctly truncates
   to the audio's real end; that's a property of this particular BD rip, not
-  a bug.
+  a bug. A follow-up code review then caught that `-shortest` alone is a
+  no-op whenever no audio track is mapped (the filtered video is the only
+  output stream, so nothing shorter exists for it to stop against) — fixed
+  by additionally passing `-t <probed source duration>`, threaded through
+  from the already-probed `QueueEncodeItem.durationSeconds`.
+- The same review also caught two related temp-output-handling issues in
+  `electron/ipc/encoding.ts`: the `.partial.mkv` temp filename was fixed
+  rather than scoped to the queue item, so pre-encode cleanup could in
+  principle delete an unrelated file that happened to share that exact name;
+  and finalization used `fs.rename`, which silently overwrites an existing
+  destination on POSIX — a real risk here since a destination could appear
+  mid-encode (encodes can run tens of minutes) despite the pre-encode
+  conflict check. Fixed by scoping the temp filename to the item's id and
+  finalizing via `fs.link` (fails on an existing destination) + cleanup
+  unlink instead of `fs.rename`.
 - Case-sensitivity detection for duplicate-destination checking
   (`src/media/caseSensitivity.ts`) probes the actual chosen output directory
   (writes and looks up a differently-cased marker file) rather than guessing
