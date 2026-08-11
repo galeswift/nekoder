@@ -160,6 +160,7 @@ describe("buildFfmpegArgs", () => {
       baseRequest({
         subtitle: { mode: "burn", trackIndexes: [2] },
         subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+        durationSeconds: 1572.571,
       }),
     );
 
@@ -177,36 +178,31 @@ describe("buildFfmpegArgs", () => {
     }, []);
     expect(mapIndexes).toEqual(["[vout]", "0:1"]);
 
-    // Caps the output at the real video/audio length rather than trusting
-    // the (possibly bogus) duration the overlay filtergraph derives from a
-    // bitmap subtitle's last cue.
-    expect(args).toContain("-shortest");
+    // Caps the output at the real, pre-probed source duration rather than
+    // trusting the (possibly bogus) duration the overlay filtergraph derives
+    // from a bitmap subtitle's last cue.
+    const tIndex = args.indexOf("-t");
+    expect(tIndex).toBeGreaterThan(-1);
+    expect(args[tIndex + 1]).toBe("1572.571");
+
+    // Deliberately no -shortest alongside -t: stacked together, whichever
+    // condition ffmpeg hits first wins, so -shortest could still cut the
+    // output short of -t's bound whenever the mapped audio track happens to
+    // end slightly before the video does — discarding real video frames
+    // that -t alone wouldn't have touched.
+    expect(args).not.toContain("-shortest");
   });
 
-  it("does not force -shortest or -t for burn tracks that don't involve the overlay filter", () => {
+  it("does not require -t for burn tracks that don't involve the overlay filter", () => {
     const args = buildFfmpegArgs(
-      baseRequest({ subtitle: { mode: "burn", trackIndexes: [2] } }),
+      baseRequest({ subtitle: { mode: "burn", trackIndexes: [2] }, durationSeconds: undefined }),
     );
 
     expect(args).not.toContain("-shortest");
     expect(args).not.toContain("-t");
   });
 
-  it("bounds a bitmap burn with -t <probed duration> when duration is known", () => {
-    const args = buildFfmpegArgs(
-      baseRequest({
-        subtitle: { mode: "burn", trackIndexes: [2] },
-        subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
-        durationSeconds: 1572.571,
-      }),
-    );
-
-    const tIndex = args.indexOf("-t");
-    expect(tIndex).toBeGreaterThan(-1);
-    expect(args[tIndex + 1]).toBe("1572.571");
-  });
-
-  it("still bounds a bitmap burn with -t when no audio track is selected — -shortest alone is a no-op with only one mapped stream", () => {
+  it("still bounds a bitmap burn with -t when no audio track is selected", () => {
     const args = buildFfmpegArgs(
       baseRequest({
         audioTrackIndex: undefined,
@@ -227,17 +223,39 @@ describe("buildFfmpegArgs", () => {
     expect(args[tIndex + 1]).toBe("1572.571");
   });
 
-  it("omits -t when duration wasn't probed, relying on -shortest alone", () => {
-    const args = buildFfmpegArgs(
-      baseRequest({
-        subtitle: { mode: "burn", trackIndexes: [2] },
-        subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
-        durationSeconds: undefined,
-      }),
-    );
+  it("rejects a bitmap burn when the source duration wasn't probed, audio present or not", () => {
+    expect(() =>
+      buildFfmpegArgs(
+        baseRequest({
+          subtitle: { mode: "burn", trackIndexes: [2] },
+          subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+          durationSeconds: undefined,
+        }),
+      ),
+    ).toThrow(/requires the source's duration/);
 
-    expect(args).not.toContain("-t");
-    expect(args).toContain("-shortest");
+    expect(() =>
+      buildFfmpegArgs(
+        baseRequest({
+          audioTrackIndex: undefined,
+          subtitle: { mode: "burn", trackIndexes: [2] },
+          subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+          durationSeconds: undefined,
+        }),
+      ),
+    ).toThrow(/requires the source's duration/);
+  });
+
+  it("rejects a bitmap burn when the probed duration is zero or negative", () => {
+    expect(() =>
+      buildFfmpegArgs(
+        baseRequest({
+          subtitle: { mode: "burn", trackIndexes: [2] },
+          subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+          durationSeconds: 0,
+        }),
+      ),
+    ).toThrow(/requires the source's duration/);
   });
 
   it("never enables -fix_sub_duration — empirically breaks overlay subtitle compositing entirely", () => {
@@ -254,6 +272,7 @@ describe("buildFfmpegArgs", () => {
       baseRequest({
         subtitle: { mode: "burn", trackIndexes: [2] },
         subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+        durationSeconds: 1572.571,
       }),
     );
 
@@ -270,6 +289,7 @@ describe("buildFfmpegArgs", () => {
           { index: 2, codec: "subrip" },
           { index: 3, codec: "hdmv_pgs_subtitle" },
         ],
+        durationSeconds: 1572.571,
       }),
     );
 
@@ -285,6 +305,7 @@ describe("buildFfmpegArgs", () => {
         videoTrackIndex: 4,
         subtitle: { mode: "burn", trackIndexes: [2] },
         subtitleTracks: [{ index: 2, codec: "hdmv_pgs_subtitle" }],
+        durationSeconds: 1572.571,
       }),
     );
 

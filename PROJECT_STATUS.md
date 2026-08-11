@@ -237,7 +237,18 @@ found and fixed:
   no-op whenever no audio track is mapped (the filtered video is the only
   output stream, so nothing shorter exists for it to stop against) — fixed
   by additionally passing `-t <probed source duration>`, threaded through
-  from the already-probed `QueueEncodeItem.durationSeconds`.
+  from the already-probed `QueueEncodeItem.durationSeconds`. A second review
+  pass then caught two more gaps in that fix: (1) stacking `-shortest` on top
+  of `-t` means ffmpeg stops at whichever hits first, so `-shortest` could
+  still cut the output short of `-t`'s bound and discard real trailing video
+  whenever the mapped audio ends slightly earlier; and (2) if probing hadn't
+  established a duration *and* no audio track was mapped, neither `-t` nor a
+  useful `-shortest` applied, and the corrupted-duration bug returned in full.
+  Resolved by dropping `-shortest` from this path entirely (`-t` alone is a
+  complete, deterministic fix, so `-shortest` had nothing left to add) and
+  having `buildFfmpegArgs` reject bitmap burn-in outright when
+  `durationSeconds` isn't a known positive number, rather than silently
+  falling back to a weaker safety net.
 - The same review also caught two related temp-output-handling issues in
   `electron/ipc/encoding.ts`: the `.partial.mkv` temp filename was fixed
   rather than scoped to the queue item, so pre-encode cleanup could in

@@ -81,6 +81,18 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
       }
     }
   }
+  if (hasBitmapBurnTrack(request) && !(request.durationSeconds !== undefined && request.durationSeconds > 0)) {
+    // See the `-t` usage below: without a known-good pre-encode duration to
+    // bound the output to, a bitmap subtitle's last cue can silently inflate
+    // the encoded file to a multi-hundred-hour duration. Rather than fall
+    // back to a weaker, less predictable safety net, refuse the request so
+    // the caller re-probes (or picks copy/no-subtitles) instead of producing
+    // a corrupted file.
+    throw new Error(
+      "Burning in bitmap (PGS/VOBSUB/DVB) subtitles requires the source's duration to already be known (from probing) " +
+        "to avoid corrupting the output's length. Re-probe the file and try again.",
+    );
+  }
 
   const args: string[] = ["-hide_banner", "-n", "-i", request.inputPath];
 
@@ -105,39 +117,32 @@ export function buildFfmpegArgs(request: EncodeRequest): string[] {
 
   // A bitmap subtitle's last cue can report a bogus multi-hundred-hour
   // duration, and the `overlay` filter used to burn it in defaults to running
-  // until its longest input finishes.
+  // until its longest input finishes. `-t <probed source duration>` hard-caps
+  // the output at the real length established *before* encoding (validated
+  // non-empty above), independent of whatever the filtergraph thinks the
+  // subtitle input's length is, and independent of whether an audio track is
+  // even mapped.
   //
-  // Primary fix: `-t <probed source duration>` hard-caps the output at the
-  // real length established *before* encoding (ffprobe's container-level
-  // duration, captured in `durationSeconds`), independent of whatever the
-  // filtergraph thinks the subtitle input's length is, and independent of
-  // whether an audio track is even mapped. That last part matters: `-shortest`
-  // alone (see below) is a no-op whenever no audio track is selected — the
-  // filtered video ends up as the *only* mapped output stream, so there's
-  // nothing shorter for it to stop against, and the multi-hundred-hour
-  // duration comes right back.
+  // Deliberately not `-shortest`: stacked on top of `-t` it can still win the
+  // race and cut the output short of `-t`'s bound whenever a mapped audio
+  // track happens to end slightly before the video does, silently discarding
+  // real trailing video frames that `-t` alone wouldn't have touched. `-t` on
+  // its own is a complete, deterministic fix for the corrupted-duration bug,
+  // so there's nothing left for `-shortest` to usefully add here.
   //
-  // Secondary: `-shortest` still caps at the muxer level once the shortest
-  // *mapped* stream finishes, which additionally trims to a real audio
-  // track's length when that audio happens to end before the video does
-  // (verified against a real MakeMKV PGS rip — see PROJECT_STATUS.md).
-  //
-  // Deliberately not `overlay=shortest=1`: that filter option ends the whole
-  // filtergraph as soon as framesync considers either input "exhausted",
-  // which for a sparse subtitle stream can fire right after its last cue is
-  // consumed — well before the video ends — truncating the output and
-  // dropping subtitle compositing entirely (confirmed against a real Plex
-  // playback).
+  // Deliberately not `overlay=shortest=1` either: that filter option ends the
+  // whole filtergraph as soon as framesync considers either input
+  // "exhausted", which for a sparse subtitle stream can fire right after its
+  // last cue is consumed — well before the video ends — truncating the
+  // output and dropping subtitle compositing entirely (confirmed against a
+  // real Plex playback).
   //
   // Deliberately *not* paired with `-fix_sub_duration`: that option was
   // tried too, but empirically (verified against a real MakeMKV PGS rip —
   // see PROJECT_STATUS.md) it breaks `overlay`'s subtitle compositing
   // outright, so nothing burns in at all.
   if (hasBitmapBurnTrack(request)) {
-    if (request.durationSeconds !== undefined && request.durationSeconds > 0) {
-      args.push("-t", String(request.durationSeconds));
-    }
-    args.push("-shortest");
+    args.push("-t", String(request.durationSeconds));
   }
 
   args.push(request.outputPath);
